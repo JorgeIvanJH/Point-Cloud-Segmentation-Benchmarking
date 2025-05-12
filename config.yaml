@@ -1,0 +1,15 @@
+SEED: 42
+TRAIN_SIZE: 0.8
+DATA_PATH: data
+OBJECT_NAME: ketchup_heinz_400ml_1200_4096_segmentation_40960_1200.h5 # Name of object of interest to segment out
+MODELS_PATH: models
+NUM_POINTS_PER_SEG_SAMPLE: 40960 # corresponding to the generation of the dataset, each object was sampled with 4096 points and each segmentation and each observation was built using 10 objects
+DEVICE: cpu # or cuda
+TRAIN:
+  BATCH_SIZE: 32
+  LR: 0.001
+  EPOCHS: 100
+  NUM_WORKERS: 4
+  SHUFFLE: true
+  PIN_MEMORY: true
+  DROP_LAST: true
