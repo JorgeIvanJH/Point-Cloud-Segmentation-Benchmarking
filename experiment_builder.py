@@ -16,27 +16,6 @@ from collections import Counter
 
 matplotlib.rcParams.update({"font.size": 8})
 
-def compute_class_weights(loader, num_classes=4):
-    class_counts = Counter()
-    for _, mask, _ in loader:
-        unique_classes, counts = torch.unique(mask, return_counts=True)
-        for cls, count in zip(unique_classes.tolist(), counts.tolist()):
-            class_counts[cls] += count
-
-    total_pixels = sum(class_counts.values())
-    class_weights = []
-
-    for i in range(num_classes):
-        if i in class_counts:
-            freq = class_counts[i] / total_pixels
-            weight = 1.0 / (freq + 1e-6)
-        else:
-            weight = 0.0  # no aparece esa clase
-        class_weights.append(weight)
-
-    class_weights = torch.tensor(class_weights, dtype=torch.float32)
-    class_weights = class_weights * (num_classes / class_weights.sum())
-    return class_weights
 
 class ExperimentBuilder(nn.Module):
     def __init__(
@@ -47,11 +26,12 @@ class ExperimentBuilder(nn.Module):
         train_data,
         val_data,
         test_data,
-        weight_decay_coefficient,
-        use_gpu,
-        continue_from_epoch=-1, 
-        lr=1e-3,
-        model_name = "TestModel"
+        device: torch.device,
+        continue_from_epoch,
+        optimizer,
+        scheduler,
+        loss_criterion,
+        mcc_metric
     ):
         """
         Initializes an ExperimentBuilder object. Such an object takes care of running training and evaluation of a deep net
@@ -63,76 +43,36 @@ class ExperimentBuilder(nn.Module):
         :param train_data: An object of the DataProvider type. Contains the training set.
         :param val_data: An object of the DataProvider type. Contains the val set.
         :param test_data: An object of the DataProvider type. Contains the test set.
-        :param weight_decay_coefficient: A float indicating the weight decay to use with the adam optimizer.
-        :param use_gpu: A boolean indicating whether to use a GPU or not.
+        :param device: device to use for training. Can be either "cpu" or "cuda". If cuda is available, then the model will be sent to the GPU.
         :param continue_from_epoch: An int indicating whether we'll start from scrach (-1) or whether we'll reload a previously saved model of epoch 'continue_from_epoch' and continue training from there.
-        :param lr: A float indicating the learning rate to use with the adam optimizer.
-        :param model_name: A string indicating the name of the model to be used. Used to change the training loop for different models.
+        :param optimizer: An optimizer to use for training. This is a pytorch optimizer.
+        :param scheduler: A learning rate scheduler to use for training. This is a pytorch scheduler.
+        :param loss_criterion: A loss function to use for training. This is a pytorch loss function.
+        :param mcc_metric: A metric to use for training. This is a pytorch metric.
         """
         super(ExperimentBuilder, self).__init__()
 
         self.experiment_name = experiment_name
         self.model = network_model
-        self.model_name = model_name
-
-        if torch.cuda.device_count() >= 1 and use_gpu:
-            self.device = torch.device("cuda")
-            self.model.to(self.device)  # sends the model from the cpu to the gpu
-        else:
-            self.device = torch.device("cpu")  # sets the device to be CPU
+        self.device = device
         print("Using ",self.device)
 
         self.train_data = train_data
         self.val_data = val_data
         self.test_data = test_data
-
-        num_conv_layers = 0
-        num_linear_layers = 0
-        total_num_parameters = 0
-        for name, value in self.named_parameters():
-            if all(item in name for item in ["conv", "weight"]):
-                num_conv_layers += 1
-            if all(item in name for item in ["linear", "weight"]):
-                num_linear_layers += 1
-            total_num_parameters += np.prod(value.shape)
-
-        print("Total number of parameters", total_num_parameters)
-        print("Total number of conv layers", num_conv_layers)
-        print("Total number of linear layers", num_linear_layers)
-
-        self.optimizer = optim.Adam(
-            self.parameters(), amsgrad=False, weight_decay=weight_decay_coefficient, lr=lr
-        )
-        self.learning_rate_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, T_max=num_epochs, eta_min=0.00002
-        )
-
-        # Loss function
-        if self.model_name == "PromptUNet":
-            print("No weight to classes in PromptUNet")
-            self.loss_criterion = nn.CrossEntropyLoss().to(self.device) 
-        else:
-            class_weights = compute_class_weights(self.val_data, network_model.n_classes) # Classes weighted by their frequency in the dataset
-            print("Class weights: ", class_weights)
-            if use_gpu:
-                class_weights = class_weights.to(self.device)
-            self.loss_criterion = nn.CrossEntropyLoss(weight=class_weights).to(
-                self.device
-            ) 
+        self.optimizer = optimizer
+        self.scheduler = scheduler
+        self.loss_criterion = loss_criterion
+        self.mcc_metric = mcc_metric
 
         # Generate the directory names
-        self.experiment_folder = os.path.abspath(experiment_name)
+        self.experiment_folder = os.path.abspath("experiments/" + experiment_name)
         self.experiment_logs = os.path.abspath(
             os.path.join(self.experiment_folder, "result_outputs")
         )
         self.experiment_saved_models = os.path.abspath(
             os.path.join(self.experiment_folder, "saved_models")
         )
-
-        # Set best models to be at 0 since we are just starting
-        self.best_val_model_idx = 0
-        self.best_val_model_acc = 0.0
-
         if not os.path.exists(
             self.experiment_folder
         ):  # If experiment directory does not exist
@@ -141,6 +81,13 @@ class ExperimentBuilder(nn.Module):
             os.mkdir(
                 self.experiment_saved_models
             )  # create the experiment saved models directory
+
+            
+        # Set best models to be at 0 since we are just starting
+        self.best_val_model_idx = 0
+        self.best_val_model_acc = 0.0
+
+
 
         self.num_epochs = num_epochs
         
@@ -267,7 +214,7 @@ class ExperimentBuilder(nn.Module):
         loss.backward()  # backpropagate to compute gradients for current iter loss
 
         self.optimizer.step()  # update network parameters
-        self.learning_rate_scheduler.step()  # update learning rate scheduler
+        self.scheduler.step()  # update learning rate scheduler
 
         # Compute Intersection over Union
         iou = self.iou_score(out, y)  # get iou score for current iter
