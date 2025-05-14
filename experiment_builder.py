@@ -238,7 +238,6 @@ class ExperimentBuilder:
                 model_save_dir, "{}_{}".format(model_save_name, str(model_idx))
             )
         )
-        self.load_state_dict(state_dict=state["network"])
         return state, state["lowest_val_loss_model_idx"], state["lowest_val_loss_model_value"]
 
     def run_experiment(self):
@@ -331,7 +330,7 @@ class ExperimentBuilder:
             ################################################################
             ##### Plot Gradient Flow at each Epoch during Training  ######
             print("Generating Gradient Flow Plot at epoch {}".format(epoch_idx))
-            plt = self.plot_grad_flow(self.model.named_parameters()) # ADD EPOCH LEGEND HERE
+            plt = self.plot_grad_flow(self.model.named_parameters())
 
             ### Adding a colorbar to the plot to show the epochs
             if ruonceflag==True:
@@ -345,55 +344,33 @@ class ExperimentBuilder:
                 cbar.set_ticks([1, numepochs])
                 cbar.set_ticklabels(["Epoch 1", f"Epoch {numepochs}"])
                 ruonceflag=False
-            ###
 
-
-            if not os.path.exists(
-                os.path.join(self.experiment_saved_models, "gradient_flow_plots")
-            ):
-                os.mkdir(
-                    os.path.join(self.experiment_saved_models, "gradient_flow_plots")
-                )
-                # plt.legend(loc="best")
-            print(
-                "save_loc: ",
-                os.path.join(
-                    self.experiment_saved_models,
-                    "gradient_flow_plots",
-                    "epoch{}.pdf".format(str(epoch_idx)),
-                ),
-            )
-            plt.savefig(
-                os.path.join(
-                    self.experiment_saved_models,
-                    "gradient_flow_plots",
-                    "epoch{}.pdf".format(str(epoch_idx)),
-                )
-            )
+            if not os.path.exists(os.path.join(self.experiment_saved_models, "gradient_flow_plots")):
+                os.mkdir(os.path.join(self.experiment_saved_models, "gradient_flow_plots"))
+            print("save_loc: ",os.path.join(self.experiment_saved_models,"gradient_flow_plots","epoch{}.pdf".format(str(epoch_idx)),),)
+            plt.savefig(os.path.join(self.experiment_saved_models,"gradient_flow_plots","epoch{}.pdf".format(str(epoch_idx)),))
             ################################################################
 
         print("Generating test set evaluation metrics")
-        self.load_model(
+        self.load_model( # TODO: USEFUL? if not, ERRASE
             model_save_dir=self.experiment_saved_models,
             model_idx=self.lowest_val_loss_model_idx,
             # load best validation model
             model_save_name="train_model",
         )
-        current_epoch_losses = {
-            "test_iou": [],
-            "test_loss": [],
-        }  # initialize a statistics dict
-        with tqdm.tqdm(total=len(self.test_data)) as pbar_test:  # ini a progress bar
-            for x, y in self.test_data:  # sample batch
-                loss, iou = self.run_iter(
-                    x=x, y=y, train=False
-                )  # compute loss and iou by running an evaluation step
-                current_epoch_losses["test_loss"].append(loss)  # save test loss
-                current_epoch_losses["test_iou"].append(iou)  # save test iou
-                pbar_test.update(1)  # update progress bar status
-                pbar_test.set_description(
-                    "loss: {:.4f}, iou: {:.4f}".format(loss, iou)
-                )  # update progress bar string output
+        current_epoch_losses = {}
+        current_epoch_losses["test_loss"] = []
+        current_epoch_losses.update({f"test_{metric_name}": [] for metric_name in self.metrics.keys()})
+        
+        
+        with tqdm.tqdm(total=len(self.test_data)) as pbar_test:
+            for images, masks in self.test_data:  # sample batch
+                loss, performance_metrics = self.run_iter(x=images, y=masks, train=False) 
+                current_epoch_losses["test_loss"].append(loss)
+                for metric_name, metric_value in performance_metrics.items():
+                    current_epoch_losses[f"test_{metric_name}"].append(metric_value)
+                pbar_test.update(1)
+                pbar_test.set_postfix(loss=f"{loss:.4f}")
 
         test_losses = {
             key: [np.mean(value)] for key, value in current_epoch_losses.items()
