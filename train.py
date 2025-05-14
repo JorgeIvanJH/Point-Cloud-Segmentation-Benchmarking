@@ -46,7 +46,7 @@ metrics["mcc"] = mcc_metric
 
 
 # TRAINING LOOP AND VALIDATION LOOP SAVE
-conv_experiment = ExperimentBuilder(network_model=seg_model,
+conv_experiment = ExperimentBuilder(model=seg_model,
                                     experiment_name=c["EXPERIMENT_NAME"] + "_" + c["MODEL_NAME"],
                                     num_epochs=c["EPOCHS"],
                                     train_data=train_dataloader, 
@@ -57,6 +57,6 @@ conv_experiment = ExperimentBuilder(network_model=seg_model,
                                     optimizer=optimizer,
                                     scheduler=scheduler,
                                     loss_criterion =criterion,
-                                    metrics=metrics # TODO: add more metrics (iou, mcc, f1, accuracy, etc.)
+                                    metrics=metrics
                                     )  # build an experiment object
 experiment_metrics, test_metrics = conv_experiment.run_experiment()  # run experiment and return experiment metrics

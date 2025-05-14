@@ -17,10 +17,10 @@ from collections import Counter
 matplotlib.rcParams.update({"font.size": 8})
 
 
-class ExperimentBuilder(nn.Module):
+class ExperimentBuilder:
     def __init__(
         self,
-        network_model,
+        model,
         experiment_name,
         num_epochs,
         train_data,
@@ -37,7 +37,7 @@ class ExperimentBuilder(nn.Module):
         Initializes an ExperimentBuilder object. Such an object takes care of running training and evaluation of a deep net
         on a given dataset. It also takes care of saving per epoch models and automatically inferring the best val model
         to be used for evaluating the test set metrics.
-        :param network_model: A pytorch nn.Module which implements a network architecture.
+        :param model: A pytorch nn.Module which implements a network architecture.
         :param experiment_name: The name of the experiment. This is used mainly for keeping track of the experiment and creating and directory structure that will be used to save logs, model parameters and other.
         :param num_epochs: Total number of epochs to run the experiment
         :param train_data: An object of the DataProvider type. Contains the training set.
@@ -53,9 +53,9 @@ class ExperimentBuilder(nn.Module):
         super(ExperimentBuilder, self).__init__()
 
         self.experiment_name = experiment_name
-        self.model = network_model
+        self.num_epochs = num_epochs
+        self.model = model
         self.device = device
-        print("Using ",self.device)
         self.train_data = train_data
         self.val_data = val_data
         self.test_data = test_data
@@ -63,7 +63,8 @@ class ExperimentBuilder(nn.Module):
         self.scheduler = scheduler
         self.loss_criterion = loss_criterion
         self.metrics = metrics
-        self.num_epochs = num_epochs
+        print("Selected device: ",self.device)
+
 
         # Generate the directory names
         self.experiment_folder = os.path.abspath("experiments/" + experiment_name)
@@ -83,14 +84,14 @@ class ExperimentBuilder(nn.Module):
             )
 
             
-        self.best_val_model_idx = 0
-        self.best_val_model_acc = 0.0
+        self.lowest_val_loss_model_idx = 0
+        self.lowest_val_loss_model_value = 0.0
 
         # Training beginning
         if (
             continue_from_epoch == -2
         ):  # if continue from epoch is -2 then continue from latest saved model
-            self.state, self.best_val_model_idx, self.best_val_model_acc = (
+            self.state, self.lowest_val_loss_model_idx, self.lowest_val_loss_model_value = (
                 self.load_model(
                     model_save_dir=self.experiment_saved_models,
                     model_save_name="train_model",
@@ -101,7 +102,7 @@ class ExperimentBuilder(nn.Module):
             self.starting_epoch = int(self.state["model_epoch"])
 
         elif continue_from_epoch > -1:  # if continue from epoch is greater than -1 then
-            self.state, self.best_val_model_idx, self.best_val_model_acc = (
+            self.state, self.lowest_val_loss_model_idx, self.lowest_val_loss_model_value = (
                 self.load_model(
                     model_save_dir=self.experiment_saved_models,
                     model_save_name="train_model",
@@ -163,72 +164,47 @@ class ExperimentBuilder(nn.Module):
 
         return plt
 
-    def iou_score(self, y_pred, y_true):
+    def run_iter(self, x, y, train=True):
+        """
+        Runs either a training or evaluation iteration according to 'train'
+        """
+        x, y = x.to(device=self.device), y.to(device=self.device)
 
-        # Convert predictions to class indices
-        y_pred = torch.argmax(y_pred, dim=1)
+        if train:
+            self.model.train()
+            out = self.model(x)
+            loss = self.loss_criterion(out, y)
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+            self.scheduler.step()
+        else:
+            self.model.eval()
+            with torch.no_grad():
+                out = self.model(x)
+                loss = self.loss_criterion(out, y)
 
-        # Flatten the tensors
-        y_pred_flat = y_pred.view(-1)
-        y_true_flat = y_true.view(-1)
+        # Compute all performance metrics
+        performance_metrics = {}
+        for metric_name, metric_fn in self.metrics.items():
+            performance_metrics[metric_name] = metric_fn(out, y)
 
-        # Compute intersection and union
-        intersection = torch.sum(y_pred_flat == y_true_flat).item()
-        union = len(y_pred_flat) + len(y_true_flat) - intersection
-
-        # Compute IoU
-        iou = intersection / union if union != 0 else 0.0
-
-        return iou
-
-    def run_train_iter(self, x, y, prompt):
-
-        self.train()  # sets model to training mode (in case batch normalization or other methods have different procedures for training and evaluation)
-        x, y, prompt = x.to(device=self.device), y.to(device=self.device), prompt.to(device=self.device)   # send data to device as torch tensors
-        out = self.model(x, prompt) if self.model_name == "PromptUNet" else self.model(x) # forward the data in the model
-
-
-        
-        loss = self.loss_criterion(out, y)  # compute loss
-
-        self.optimizer.zero_grad()  # set all weight grads from previous training iters to 0
-        loss.backward()  # backpropagate to compute gradients for current iter loss
-
-        self.optimizer.step()  # update network parameters
-        self.scheduler.step()  # update learning rate scheduler
-
-        # Compute Intersection over Union
-        iou = self.iou_score(out, y)  # get iou score for current iter
-
-        return loss.item(), iou
-
-    def run_evaluation_iter(self, x, y, prompt):
-
-        self.eval()  # sets the system to validation mode
-        x, y, prompt = x.to(device=self.device), y.to(device=self.device), prompt.to(device=self.device)   # send data to device as torch tensors
-        out = self.model(x, prompt) if self.model_name == "PromptUNet" else self.model(x) # forward the data in the model
-
-        loss = self.loss_criterion(out, y)  # compute loss
-
-        # Compute Intersection over Union
-        iou = self.iou_score(out, y)  # get iou score for current iter
-
-        return loss.item(), iou
+        return loss.item(), performance_metrics
 
     def save_model(
         self,
         model_save_dir,
         model_save_name,
         model_idx,
-        best_validation_model_idx,
-        best_validation_model_acc,
+        lowest_val_loss_model_idx,
+        lowest_val_loss_model_value,
     ):
         """
-        Save the network parameter state and current best val epoch idx and best val accuracy.
+        Save the network parameter state and current lowest val loss with epoch idx.
         :param model_save_name: Name to use to save model without the epoch index
         :param model_idx: The index to save the model with.
-        :param best_validation_model_idx: The index of the best validation model to be stored for future use.
-        :param best_validation_model_acc: The best validation accuracy to be stored for use at test time.
+        :param lowest_val_loss_model_idx: The index of the model with lowest loss to be stored for future use.
+        :param lowest_val_loss_model_value: The lowest validation loss to be stored for use at test time.
         :param model_save_dir: The directory to store the state at.
         :param state: The dictionary containing the system state.
 
@@ -236,11 +212,11 @@ class ExperimentBuilder(nn.Module):
         self.state["network"] = (
             self.state_dict()
         )  # save network parameter and other variables.
-        self.state["best_val_model_idx"] = (
-            best_validation_model_idx  # save current best val idx
+        self.state["lowest_val_loss_model_idx"] = (
+            lowest_val_loss_model_idx  # save current lowest val loss idx
         )
-        self.state["best_val_model_acc"] = (
-            best_validation_model_acc  # save current best val acc
+        self.state["lowest_val_loss_model_value"] = (
+            lowest_val_loss_model_value  # save current lowest val loss
         )
         torch.save(
             self.state,
@@ -263,7 +239,7 @@ class ExperimentBuilder(nn.Module):
             )
         )
         self.load_state_dict(state_dict=state["network"])
-        return state, state["best_val_model_idx"], state["best_val_model_acc"]
+        return state, state["lowest_val_loss_model_idx"], state["lowest_val_loss_model_value"]
 
     def run_experiment(self):
         """
@@ -271,73 +247,53 @@ class ExperimentBuilder(nn.Module):
         :return: The summary current_epoch_losses from starting epoch to total_epochs.
         """
         ruonceflag=True
-        total_losses = {
-            "train_iou": [],
-            "train_loss": [],
-            "val_iou": [],
-            "val_loss": [],
-        }  # initialize a dict to keep the per-epoch metrics
+        total_losses = {} # initialize a dict to keep the per-epoch metrics
+        total_losses["train_loss"] = []
+        total_losses["val_loss"] = []
+        total_losses.update({f"train_{metric_name}": [] for metric_name in self.metrics.keys()})
+        total_losses.update({f"val_{metric_name}": [] for metric_name in self.metrics.keys()})
+
+        self.lowest_val_loss_model_value = float("inf")  # set the lowest val loss to infinity
+        self.lowest_val_loss_model_idx = 0  # set the lowest val loss model idx to 0
+
         for i, epoch_idx in enumerate(range(self.starting_epoch, self.num_epochs)):
             epoch_start_time = time.time()
-            current_epoch_losses = {
-                "train_iou": [],
-                "train_loss": [],
-                "val_iou": [],
-                "val_loss": [],
-            }
+
+            current_epoch_losses = {}
+            current_epoch_losses["train_loss"] = []
+            current_epoch_losses["val_loss"] = []
+            current_epoch_losses.update({f"train_{metric_name}": [] for metric_name in self.metrics.keys()})
+            current_epoch_losses.update({f"val_{metric_name}": [] for metric_name in self.metrics.keys()})
             self.current_epoch = epoch_idx
-            with tqdm.tqdm(
-                total=len(self.train_data)
-            ) as pbar_train:  # create a progress bar for training
-                for idx, (images, masks, prompt) in enumerate(self.train_data):  # get data batches
-                    loss, iou = self.run_train_iter(
-                        x=images, y=masks, prompt=prompt
-                    )  # take a training iter step
-                    current_epoch_losses["train_loss"].append(
-                        loss
-                    )  # add current iter loss to the train loss list
-                    current_epoch_losses["train_iou"].append(
-                        iou
-                    )  # add current iter acc to the train acc list
-                    pbar_train.update(1)
-                    pbar_train.set_description(
-                        "loss: {:.4f}, iou: {:.4f}".format(loss, iou)
-                    )
+            
+            # Run training and validation iterations
+            for phase, dataloader in [("train", self.train_data), ("val", self.val_data)]:
+                is_train = phase == "train"
+                with tqdm.tqdm(total=len(dataloader), desc=phase) as pbar:
+                    for images, masks in dataloader:
+                        loss, performance_metrics = self.run_iter(x=images, y=masks, train=is_train)
+                        current_epoch_losses[f"{phase}_loss"].append(loss)
 
-            with tqdm.tqdm(
-                total=len(self.val_data)
-            ) as pbar_val:  # create a progress bar for validation
-                for x, y, prompt  in self.val_data:  # get data batches
-                    loss, iou = self.run_evaluation_iter(
-                        x=x, y=y, prompt=prompt
-                    )  # run a validation iter
-                    current_epoch_losses["val_loss"].append(
-                        loss
-                    )  # add current iter loss to val loss list.
-                    current_epoch_losses["val_iou"].append(
-                        iou
-                    )  # add current iter acc to val acc lst.
-                    pbar_val.update(1)  # add 1 step to the progress bar
-                    pbar_val.set_description(
-                        "loss: {:.4f}, iou: {:.4f}".format(loss, iou)
-                    )
-            val_mean_accuracy = np.mean(current_epoch_losses["val_iou"])
-            if (
-                val_mean_accuracy > self.best_val_model_acc
-            ):  # if current epoch's mean val acc is greater than the saved best val acc then
-                self.best_val_model_acc = val_mean_accuracy  # set the best val model acc to be current epoch's val accuracy
-                self.best_val_model_idx = epoch_idx  # set the experiment-wise best val idx to be the current epoch's idx
+                        for metric_name, metric_value in performance_metrics.items():
+                            current_epoch_losses[f"{phase}_{metric_name}"].append(metric_value)
 
+                        pbar.update(1)
+                        pbar.set_postfix(loss=f"{loss:.4f}")
+
+            
+            val_mean_loss = np.mean(current_epoch_losses["val_loss"])
+            if (val_mean_loss < self.lowest_val_loss_model_value):
+                self.lowest_val_loss_model_value = val_mean_loss 
+                self.lowest_val_loss_model_idx = epoch_idx
+
+            # mean of all metrics for storage and output on the terminal.
             for key, value in current_epoch_losses.items():
-                total_losses[key].append(
-                    np.mean(value)
-                )  # get mean of all metrics of current epoch metrics dict, to get them ready for storage and output on the terminal.
-
+                total_losses[key].append(np.mean(value)) 
             save_statistics(
                 experiment_log_dir=self.experiment_logs,
                 filename="summary.csv",
                 stats_dict=total_losses,
-                current_epoch=i,
+                current_epoch=self.current_epoch,
                 continue_from_mode=(
                     True if (self.starting_epoch != 0 or i > 0) else False
                 ),
@@ -352,34 +308,25 @@ class ExperimentBuilder(nn.Module):
                 ]
             )
             # create a string to use to report our epoch metrics
-            epoch_elapsed_time = (
-                time.time() - epoch_start_time
-            )  # calculate time taken for epoch
+            epoch_elapsed_time = (time.time() - epoch_start_time)  # calculate time taken for epoch
             epoch_elapsed_time = "{:.4f}".format(epoch_elapsed_time)
-            print(
-                "Epoch {}:".format(epoch_idx),
+            print("Epoch {}:".format(epoch_idx),
                 out_string,
                 "epoch time",
                 epoch_elapsed_time,
                 "seconds",
             )
             self.state["model_epoch"] = epoch_idx
-            self.save_model(
-                model_save_dir=self.experiment_saved_models,
-                # save model and best val idx and best val acc, using the model dir, model name and model idx
-                model_save_name="train_model",
-                model_idx=epoch_idx,
-                best_validation_model_idx=self.best_val_model_idx,
-                best_validation_model_acc=self.best_val_model_acc,
-            )
-            self.save_model(
-                model_save_dir=self.experiment_saved_models,
-                # save model and best val idx and best val acc, using the model dir, model name and model idx
-                model_save_name="train_model",
-                model_idx="latest",
-                best_validation_model_idx=self.best_val_model_idx,
-                best_validation_model_acc=self.best_val_model_acc,
-            )
+
+            # Save current model and override the previous "latest" model
+            for model_idx in [epoch_idx, "latest"]:
+                self.save_model(
+                    model_save_dir=self.experiment_saved_models,
+                    model_save_name="train_model",
+                    model_idx=model_idx,
+                    lowest_val_loss_model_idx=self.lowest_val_loss_model_idx,
+                    lowest_val_loss_model_value=self.lowest_val_loss_model_value,
+                )
 
             ################################################################
             ##### Plot Gradient Flow at each Epoch during Training  ######
@@ -428,7 +375,7 @@ class ExperimentBuilder(nn.Module):
         print("Generating test set evaluation metrics")
         self.load_model(
             model_save_dir=self.experiment_saved_models,
-            model_idx=self.best_val_model_idx,
+            model_idx=self.lowest_val_loss_model_idx,
             # load best validation model
             model_save_name="train_model",
         )
@@ -437,9 +384,9 @@ class ExperimentBuilder(nn.Module):
             "test_loss": [],
         }  # initialize a statistics dict
         with tqdm.tqdm(total=len(self.test_data)) as pbar_test:  # ini a progress bar
-            for x, y, prompt in self.test_data:  # sample batch
-                loss, iou = self.run_evaluation_iter(
-                    x=x, y=y, prompt=prompt
+            for x, y in self.test_data:  # sample batch
+                loss, iou = self.run_iter(
+                    x=x, y=y, train=False
                 )  # compute loss and iou by running an evaluation step
                 current_epoch_losses["test_loss"].append(loss)  # save test loss
                 current_epoch_losses["test_iou"].append(iou)  # save test iou
