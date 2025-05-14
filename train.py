@@ -34,7 +34,15 @@ num_iterations_in_epoch = len(train_dataloader)
 step_size = int(num_iterations_in_epoch * 8)     # as recommended by the paper \ref{smith2017cyclical}
 scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, base_lr=c["LR"], max_lr=0.01, step_size_up=step_size, cycle_momentum=False)
 mcc_metric = MulticlassMatthewsCorrCoef(num_classes=NUM_CLASSES).to(DEVICE)
-
+def compute_iou(predictions,targets):
+    targets = targets.reshape(-1)
+    predictions = predictions.reshape(-1)
+    intersection = torch.sum(predictions == targets) # true positives
+    union = len(predictions) + len(targets) - intersection
+    return intersection / union
+metrics = {} # every metric should receive (preds, target) only, in that order
+metrics["iou"] = compute_iou
+metrics["mcc"] = mcc_metric
 
 
 # TRAINING LOOP AND VALIDATION LOOP SAVE
@@ -49,6 +57,6 @@ conv_experiment = ExperimentBuilder(network_model=seg_model,
                                     optimizer=optimizer,
                                     scheduler=scheduler,
                                     loss_criterion =criterion,
-                                    mcc_metric=mcc_metric # TODO: add multiple metrics (iou, mcc, f1, etc.)
+                                    metrics=metrics # TODO: add more metrics (iou, mcc, f1, accuracy, etc.)
                                     )  # build an experiment object
 experiment_metrics, test_metrics = conv_experiment.run_experiment()  # run experiment and return experiment metrics

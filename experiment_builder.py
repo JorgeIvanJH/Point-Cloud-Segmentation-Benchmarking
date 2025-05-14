@@ -31,7 +31,7 @@ class ExperimentBuilder(nn.Module):
         optimizer,
         scheduler,
         loss_criterion,
-        mcc_metric
+        metrics: dict,
     ):
         """
         Initializes an ExperimentBuilder object. Such an object takes care of running training and evaluation of a deep net
@@ -48,7 +48,7 @@ class ExperimentBuilder(nn.Module):
         :param optimizer: An optimizer to use for training. This is a pytorch optimizer.
         :param scheduler: A learning rate scheduler to use for training. This is a pytorch scheduler.
         :param loss_criterion: A loss function to use for training. This is a pytorch loss function.
-        :param mcc_metric: A metric to use for training. This is a pytorch metric.
+        :param metrics: A dictionary of metrics to use for tracking performance. The keys are the names of the metrics and the values are the functions that compute the metrics.
         """
         super(ExperimentBuilder, self).__init__()
 
@@ -56,14 +56,14 @@ class ExperimentBuilder(nn.Module):
         self.model = network_model
         self.device = device
         print("Using ",self.device)
-
         self.train_data = train_data
         self.val_data = val_data
         self.test_data = test_data
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.loss_criterion = loss_criterion
-        self.mcc_metric = mcc_metric
+        self.metrics = metrics
+        self.num_epochs = num_epochs
 
         # Generate the directory names
         self.experiment_folder = os.path.abspath("experiments/" + experiment_name)
@@ -75,23 +75,18 @@ class ExperimentBuilder(nn.Module):
         )
         if not os.path.exists(
             self.experiment_folder
-        ):  # If experiment directory does not exist
-            os.mkdir(self.experiment_folder)  # create the experiment directory
-            os.mkdir(self.experiment_logs)  # create the experiment log directory
+        ):
+            os.mkdir(self.experiment_folder)
+            os.mkdir(self.experiment_logs)
             os.mkdir(
                 self.experiment_saved_models
-            )  # create the experiment saved models directory
+            )
 
             
-        # Set best models to be at 0 since we are just starting
         self.best_val_model_idx = 0
         self.best_val_model_acc = 0.0
 
-
-
-        self.num_epochs = num_epochs
-        
-
+        # Training beginning
         if (
             continue_from_epoch == -2
         ):  # if continue from epoch is -2 then continue from latest saved model
@@ -119,12 +114,6 @@ class ExperimentBuilder(nn.Module):
             self.state = dict()
             self.starting_epoch = 0
 
-    def get_num_parameters(self):
-        total_num_params = 0
-        for param in self.parameters():
-            total_num_params += np.prod(param.shape)
-
-        return total_num_params
 
     def plot_func_def(self, all_grads, layers, epoch):
         """
@@ -150,9 +139,6 @@ class ExperimentBuilder(nn.Module):
 
     def plot_grad_flow(self, named_parameters):
         """
-        The function is being called in Line 298 of this file.
-        Receives the parameters of the model being trained. Returns plot of gradient flow for the given model parameters.
-
         This function takes as
         input the model parameters during training, accumulates the absolute mean of the gradients in all_grads and
         the layer names in layers. The matplotlib function plt plots gradient values for each layer and the function
@@ -161,11 +147,6 @@ class ExperimentBuilder(nn.Module):
         """
         all_grads = []
         layers = []
-
-        """
-        Complete the code in the block below to collect absolute mean of the gradients for each layer in all_grads with the             
-        layer names in layers.
-        """
         for name, param in named_parameters:
             if param.requires_grad and param.grad is not None and "bias" not in name:
                 # Compute the absolute mean of the gradient

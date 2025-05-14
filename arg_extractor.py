@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument('--lr', type=float, help='Learning rate')
     parser.add_argument('--num_epochs', type=int, help='Number of training epochs')
     parser.add_argument('--weight_decay_coefficient', type=float, help='Weight decay for optimizer')
-    parser.add_argument('--continue_from_epoch', type=int, default=-1, help='Resume from epoch (use -1 to start from scratch)')
+    parser.add_argument('--continue_from_epoch', type=int, default=-1, help='Resume from epoch (-1: from scratch, -2: last checkpoint, int: specific epoch)')
     parser.add_argument('--load_encoder_weights', type=str2bool, default=False, help='Load pretrained encoder weights')
 
     # System
