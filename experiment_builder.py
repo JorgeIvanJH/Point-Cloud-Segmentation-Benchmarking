@@ -174,7 +174,7 @@ class ExperimentBuilder:
 
         if train:
             self.model.train()
-            preds, _ = self.model(points)  # shape: (B, N, num_classes)
+            preds, _ = self.model(points)  # shape: (B, N, num_classes). TODO: see if we can remove the second output
             pred_choice = torch.softmax(preds, dim=2).argmax(dim=2)
             loss = self.loss_criterion(preds, targets, pred_choice)   
             self.optimizer.zero_grad()
@@ -184,7 +184,7 @@ class ExperimentBuilder:
         else:
             self.model.eval()
             with torch.no_grad():
-                preds = self.model(points)  # shape: (B, N, num_classes)
+                preds, _ = self.model(points)  # shape: (B, N, num_classes)
                 pred_choice = torch.softmax(preds, dim=2).argmax(dim=2)
                 loss = self.loss_criterion(preds, targets, pred_choice)
 
