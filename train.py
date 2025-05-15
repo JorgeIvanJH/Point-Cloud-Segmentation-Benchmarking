@@ -13,13 +13,20 @@ print(c)
 DEVICE = torch.device("cuda" if (torch.cuda.is_available() and c["DEVICE"] == "cuda" ) else "cpu")
 
 # Data Providers
-train_dataloader, valid_dataloader = get_data_loaders(
-    object_segmentation_dataset_directory=c["DATA_PATH"],
-    target_object_dataset_name=c["OBJECT_NAME"],
-    shuffle=c["SHUFFLE"],
-    train_size=c["TRAIN_SIZE"],
+train_dataloader, valid_dataloader, test_dataloader = get_data_loaders(
+    train_val_dir=c["DATA_PATH"],
+    train_val_name=c["OBJECT_NAME"],
+    test_dir=c["DATA_PATH"], # TODO: change to test data
+    test_name=c["OBJECT_NAME"], # TODO: change to test data
     batch_size=c["BATCH_SIZE"],
-    seed=c["SEED"]
+    train_size=c["TRAIN_SIZE"],
+    shuffle=c["SHUFFLE"],
+    seed=c["SEED"],
+    use_colors=c["USE_COLORS"],
+    normalize=c["NORMALIZE"],
+    num_workers=c["NUM_WORKERS"],
+    pin_memory=c["PIN_MEMORY"],
+
 )
 
 # Model
@@ -51,7 +58,7 @@ conv_experiment = ExperimentBuilder(model=seg_model,
                                     num_epochs=c["EPOCHS"],
                                     train_data=train_dataloader, 
                                     val_data=valid_dataloader,
-                                    test_data=valid_dataloader, # TODO: change to test data
+                                    test_data=test_dataloader,
                                     device=DEVICE,
                                     continue_from_epoch=c["CONTINUE_FROM_EPOCH"],
                                     optimizer=optimizer,

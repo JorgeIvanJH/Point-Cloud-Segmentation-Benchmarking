@@ -5,7 +5,9 @@ DATA_PATH: data
 OBJECT_NAME: ketchup_heinz_400ml_1200_4096_segmentation_40960_1200.h5
 NUM_POINTS_PER_SEG_SAMPLE: 40960  # 4096 points per object x 10 objects per sample
 MODELS_PATH: models
+USE_COLORS: true
 TRAIN:
+  EXPERIMENT_NAME: exp_1
   BATCH_SIZE: 32
   LR: 0.001
   WEIGHT_DECAY: 0.0001
@@ -14,6 +16,8 @@ TRAIN:
   SHUFFLE: true
   PIN_MEMORY: true
   DROP_LAST: true
+  NORMALIZE: true
+  CONTINUE_FROM_EPOCH: -1 # Resume from epoch (-1: from scratch, -2: last checkpoint, int: specific epoch)
 MODEL:
   NAME: pointnet2
   NUM_CLASSES: 2
