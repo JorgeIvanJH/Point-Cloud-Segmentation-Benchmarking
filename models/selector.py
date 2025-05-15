@@ -5,7 +5,7 @@ import torch
 def pointnet(c, device, num_classes):
     print(f"Using PointNet model for segmentation on {c['OBJECT_NAME']}")
     
-    from models.pointnet import PointNetSegHead, PointNetSegLoss
+    from models.architectures.pointnet import PointNetSegHead, PointNetSegLoss
     
     model = PointNetSegHead(
         num_points=c["NUM_POINTS_PER_SEG_SAMPLE"],
@@ -24,7 +24,7 @@ def pointnet(c, device, num_classes):
 def pointnet2(c, device, num_classes):
     print(f"Using PointNet2 model for segmentation on {c['OBJECT_NAME']}")
 
-    from models.pointnet2 import PointNet2_SegHead, PointNet2_SegLoss
+    from models.architectures.pointnet2 import PointNet2_SegHead, PointNet2_SegLoss
 
     model = PointNet2_SegHead(
         num_points=c["NUM_POINTS_PER_SEG_SAMPLE"],

@@ -164,16 +164,19 @@ class ExperimentBuilder:
 
         return plt
 
-    def run_iter(self, x, y, train=True):
+    def run_iter(self, points, targets, train=True):
         """
         Runs either a training or evaluation iteration according to 'train'
         """
-        x, y = x.to(device=self.device), y.to(device=self.device)
+        # Move to device
+        points = points.transpose(2, 1).float().to(self.device)  # (B, C, N)
+        targets = torch.argmax(targets, dim=2).long().to(self.device)  # Convert from one-hot to class indices
 
         if train:
             self.model.train()
-            out = self.model(x)
-            loss = self.loss_criterion(out, y)
+            preds, _ = self.model(points)  # shape: (B, N, num_classes)
+            pred_choice = torch.softmax(preds, dim=2).argmax(dim=2)
+            loss = self.loss_criterion(preds, targets, pred_choice)   
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -181,13 +184,14 @@ class ExperimentBuilder:
         else:
             self.model.eval()
             with torch.no_grad():
-                out = self.model(x)
-                loss = self.loss_criterion(out, y)
+                preds = self.model(points)  # shape: (B, N, num_classes)
+                pred_choice = torch.softmax(preds, dim=2).argmax(dim=2)
+                loss = self.loss_criterion(preds, targets, pred_choice)
 
-        # Compute all performance metrics
-        performance_metrics = {}
-        for metric_name, metric_fn in self.metrics.items():
-            performance_metrics[metric_name] = metric_fn(out, y)
+        # Compute metrics
+        performance_metrics = {
+            name: fn(pred_choice, targets) for name, fn in self.metrics.items()
+        }
 
         return loss.item(), performance_metrics
 
@@ -269,8 +273,8 @@ class ExperimentBuilder:
             for phase, dataloader in [("train", self.train_data), ("val", self.val_data)]:
                 is_train = phase == "train"
                 with tqdm.tqdm(total=len(dataloader), desc=phase) as pbar:
-                    for images, masks in dataloader:
-                        loss, performance_metrics = self.run_iter(x=images, y=masks, train=is_train)
+                    for points, targets in dataloader:
+                        loss, performance_metrics = self.run_iter(points, targets, train=is_train)
                         current_epoch_losses[f"{phase}_loss"].append(loss)
 
                         for metric_name, metric_value in performance_metrics.items():
@@ -364,8 +368,8 @@ class ExperimentBuilder:
         
         
         with tqdm.tqdm(total=len(self.test_data)) as pbar_test:
-            for images, masks in self.test_data:  # sample batch
-                loss, performance_metrics = self.run_iter(x=images, y=masks, train=False) 
+            for points, targets in self.test_data:  # sample batch
+                loss, performance_metrics = self.run_iter(points, targets, train=False) 
                 current_epoch_losses["test_loss"].append(loss)
                 for metric_name, metric_value in performance_metrics.items():
                     current_epoch_losses[f"test_{metric_name}"].append(metric_value)

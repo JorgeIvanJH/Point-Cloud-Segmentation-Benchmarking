@@ -37,14 +37,15 @@ def parse_args():
 
 def merge_configs(yaml_config, cli_args):
     train_config = yaml_config.get("TRAIN", {})
+    model_config = yaml_config.get("MODEL", {})
 
     merged_config = {
         # CLI overrides
         "SEED": cli_args.seed if cli_args.seed is not None else yaml_config.get("SEED", 42),
         "EXPERIMENT_NAME": cli_args.experiment_name if cli_args.experiment_name else train_config.get("EXPERIMENT_NAME", "exp_1"),
-        "MODEL_NAME": cli_args.model_name if cli_args.model_name else train_config.get("NAME", "testmodel"),
+        "MODEL_NAME": cli_args.model_name if cli_args.model_name else model_config.get("NAME", "pointnet"),
         "CONTINUE_FROM_EPOCH": cli_args.continue_from_epoch if cli_args.continue_from_epoch else train_config.get("CONTINUE_FROM_EPOCH", -1),
-        "NUM_WORKERS": cli_args.num_workers if cli_args.num_workers else train_config.get("NUM_WORKERS", 4),
+        "NUM_WORKERS": cli_args.num_workers if cli_args.num_workers else train_config.get("NUM_WORKERS", 0),
         # YAML config
         "TRAIN_SIZE": yaml_config.get("TRAIN_SIZE", 0.8),
         "DATA_PATH": yaml_config["DATA_PATH"],
@@ -53,7 +54,7 @@ def merge_configs(yaml_config, cli_args):
         "NUM_POINTS_PER_SEG_SAMPLE": yaml_config["NUM_POINTS_PER_SEG_SAMPLE"],
         "DEVICE": yaml_config.get("DEVICE", "cpu"),
         "USE_COLORS": yaml_config.get("USE_COLORS", True),
-        "BATCH_SIZE": train_config.get("BATCH_SIZE", 32),
+        "BATCH_SIZE": train_config.get("BATCH_SIZE", 4),
         "LR": train_config.get("LR", 0.001),
         "EPOCHS": train_config.get("EPOCHS", 100),
         "WEIGHT_DECAY": train_config.get("WEIGHT_DECAY", 0),
