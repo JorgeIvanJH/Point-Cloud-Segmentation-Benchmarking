@@ -1,67 +1,57 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
-
-from torchmetrics.classification import MulticlassMatthewsCorrCoef
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset
-
 import numpy as np
 
 
-NUM_POINTS_PER_SEG_SAMPLE = 40960
-NUM_POINTS = NUM_POINTS_PER_SEG_SAMPLE
-
-# ============================================================================
-# T-net (Spatial Transformer Network)
 class Tnet(nn.Module):
-    ''' T-Net learns a Transformation matrix with a specified dimension '''
-    def __init__(self, dim, num_points=NUM_POINTS):
+    '''Learns a Transformation matrix for the specified dimension'''
+    def __init__(self, num_channels):
         super(Tnet, self).__init__()
 
-        # dimensions for transform matrix
-        self.dim = dim 
+        self.num_channels = num_channels 
 
-        self.conv1 = nn.Conv1d(dim, 64, kernel_size=1)
+        self.conv1 = nn.Conv1d(num_channels, 64, kernel_size=1)
         self.conv2 = nn.Conv1d(64, 128, kernel_size=1)
         self.conv3 = nn.Conv1d(128, 1024, kernel_size=1)
 
-        self.linear1 = nn.Linear(1024, 512)   # is a linear transformation before the activation, called also fully connected layer or Dense layer in TensorFlow 
+        self.linear1 = nn.Linear(1024, 512)
         self.linear2 = nn.Linear(512, 256)
-        self.linear3 = nn.Linear(256, dim**2)
+        self.linear3 = nn.Linear(256, num_channels**2)
 
         self.bn1 = nn.BatchNorm1d(64)
         self.bn2 = nn.BatchNorm1d(128)
         self.bn3 = nn.BatchNorm1d(1024)
         self.bn4 = nn.BatchNorm1d(512)
-        self.bn5 = nn.BatchNorm1d(256)
-
-        self.max_pool = nn.MaxPool1d(kernel_size=num_points)
-        
+        self.bn5 = nn.BatchNorm1d(256)        
 
     def forward(self, x):
+
         bs = x.shape[0]
 
-        # pass through shared MLP layers (conv1d)
-        x = self.bn1(F.relu(self.conv1(x)))
-        x = self.bn2(F.relu(self.conv2(x)))
-        x = self.bn3(F.relu(self.conv3(x)))
+        # shared MLP(64, 128, 1024)
+        x = F.relu(self.bn1(self.conv1(x))) # (B, 64, N)
+        x = F.relu(self.bn2(self.conv2(x))) # (B, 128, N)
+        x = F.relu(self.bn3(self.conv3(x))) # (B, 1024, N)
 
-        # max pool over num points
-        x = self.max_pool(x).view(bs, -1)
-        
-        # pass through MLP
-        x = self.bn4(F.relu(self.linear1(x)))
-        x = self.bn5(F.relu(self.linear2(x)))
-        x = self.linear3(x)
+        # max pooling across points
+        x = torch.max(x, dim=2, keepdim=False)[0] # (B, 1024)
+
+        # fully connected layers with output sizes 512, 256
+        x = F.relu(self.bn4(self.linear1(x))) # (B, 512)
+        x = F.relu(self.bn5(self.linear2(x))) # (B, 256)
+
+        # Resize to build transformation matrix, hence **2
+        x = self.linear3(x) # (B, num_channels^2)
 
         # initialize identity matrix
-        iden = torch.eye(self.dim, requires_grad=True).repeat(bs, 1, 1)
-        if x.is_cuda:
-            iden = iden.cuda()
-
-        x = x.view(-1, self.dim, self.dim) + iden
+        iden = torch.eye(self.num_channels) # identity matrix for 1 channel
+        iden = iden.repeat(bs, 1, 1).to(x.device) # repeat for each batch
+        
+        # reshape to get transformation matrix
+        x = x.view(-1, self.num_channels, self.num_channels) 
+        # add identity matrix to the transformation matrix for regularization
+        x = x + iden
 
         return x
 
@@ -82,7 +72,7 @@ class PointNetBackbone(nn.Module):
     to maintain orthogonality in high dimensional space). "An orthogonal transformations preserves
     the lengths of vectors and angles between them"
     ''' 
-    def __init__(self, num_points=NUM_POINTS, num_global_feats=1024, local_feat=True):
+    def __init__(self, num_points, num_global_feats=1024, local_feat=True):
         ''' Initializers:
                 num_points - number of points in point cloud
                 num_global_feats - number of Global Features for the main 
@@ -122,19 +112,21 @@ class PointNetBackbone(nn.Module):
 
     
     def forward(self, x):
-
+        print("PointNet Backbone")
+        print("x shape before tnet1: ", x.shape)
         # get batch size
         bs = x.shape[0]
         
         # pass through first Tnet to get transform matrix
         A_input = self.tnet1(x)
+        print("A_input shape: ", A_input.shape)
 
         # perform first transformation across each point in the batch
         x = torch.bmm(x.transpose(2, 1), A_input).transpose(2, 1)
 
         # pass through first shared MLP
-        x = self.bn1(F.relu(self.conv1(x)))
-        x = self.bn2(F.relu(self.conv2(x)))
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
         
         # get feature transform
         A_feat = self.tnet2(x)
@@ -146,9 +138,9 @@ class PointNetBackbone(nn.Module):
         local_features = x.clone()
 
         # pass through second MLP
-        x = self.bn3(F.relu(self.conv3(x)))
-        x = self.bn4(F.relu(self.conv4(x)))
-        x = self.bn5(F.relu(self.conv5(x)))
+        x = F.relu(self.bn3(self.conv3(x)))
+        x = F.relu(self.bn4(self.conv4(x)))
+        x = F.relu(self.bn5(self.conv5(x)))
 
         # get global feature vector and critical indexes
         global_features, critical_indexes = self.max_pool(x)
@@ -169,7 +161,7 @@ class PointNetBackbone(nn.Module):
 # Classification Head
 class PointNetClassHead(nn.Module):
     '''' Classification Head '''
-    def __init__(self, num_points=NUM_POINTS, num_global_feats=1024, k=2):
+    def __init__(self, num_points, num_global_feats=1024, k=2):
         super(PointNetClassHead, self).__init__()
 
         # get the backbone (only need global features for classification)
@@ -194,8 +186,8 @@ class PointNetClassHead(nn.Module):
         # get global features
         x, crit_idxs, A_feat = self.backbone(x) 
 
-        x = self.bn1(F.relu(self.linear1(x)))
-        x = self.bn2(F.relu(self.linear2(x)))
+        x = F.relu(self.bn1(self.linear1(x)))
+        x = F.relu(self.bn2(self.linear2(x)))
         x = self.dropout(x)
         x = self.linear3(x)
 
@@ -206,7 +198,7 @@ class PointNetClassHead(nn.Module):
 # Segmentation Head
 class PointNetSegHead(nn.Module):
     ''' Segmentation Head '''
-    def __init__(self, num_points=NUM_POINTS, num_global_feats=1024, m=2):
+    def __init__(self, num_points, num_global_feats=1024, m=2):
         super(PointNetSegHead, self).__init__()
 
         self.num_points = num_points
@@ -234,9 +226,9 @@ class PointNetSegHead(nn.Module):
         x, crit_idxs, A_feat = self.backbone(x) 
 
         # pass through shared MLP
-        x = self.bn1(F.relu(self.conv1(x)))
-        x = self.bn2(F.relu(self.conv2(x)))
-        x = self.bn3(F.relu(self.conv3(x)))
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        x = F.relu(self.bn3(self.conv3(x)))
         x = self.conv4(x)
 
         x = x.transpose(2, 1)
