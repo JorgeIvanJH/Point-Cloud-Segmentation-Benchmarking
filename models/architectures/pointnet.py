@@ -55,107 +55,92 @@ class Tnet(nn.Module):
 
         return x
 
-# ============================================================================
-# Point Net Backbone (main Architecture)
-class PointNetBackbone(nn.Module):
-    '''
-    This is the main portion of Point Net before the classification and segmentation heads.
-    The main function of this network is to obtain the local and global point features, 
-    which can then be passed to each of the heads to perform either classification or
-    segmentation. The forward pass through the backbone includes both T-nets and their 
-    transformations, the shared MLPs, and the max pool layer to obtain the global features.
 
-    The forward function either returns the global or combined (local and global features)
-    along with the critical point index locations and the feature transformation matrix. The
-    feature transformation matrix is used for a regularization term that will help it become
-    orthogonal. (i.e. a rigid body transformation is an orthogonal transform and we would like
-    to maintain orthogonality in high dimensional space). "An orthogonal transformations preserves
-    the lengths of vectors and angles between them"
-    ''' 
-    def __init__(self, num_points, num_global_feats=1024, local_feat=True):
-        ''' Initializers:
-                num_points - number of points in point cloud
-                num_global_feats - number of Global Features for the main 
-                                   Max Pooling layer
-                local_feat - if True, forward() returns the concatenation 
-                             of the local and global features
-            '''
+
+class PointNetBackbone(nn.Module):
+    '''The entire backbone before the classification or segmentation heads''' 
+    def __init__(self,num_channels, append_local_feat=True, return_critical_indexes=False):
         super(PointNetBackbone, self).__init__()
 
-        # if true concat local and global features
-        self.num_points = num_points
-        self.num_global_feats = num_global_feats
-        self.local_feat = local_feat
+        self.append_local_feat = append_local_feat
+        self.num_channels = num_channels
+        self.return_critical_indexes = return_critical_indexes
 
         # Spatial Transformer Networks (T-nets)
-        self.tnet1 = Tnet(dim=6, num_points=num_points)
-        self.tnet2 = Tnet(dim=64, num_points=num_points)
+        self.tnet1 = Tnet(3) # For the xyz coordinates
+        self.tnet2 = Tnet(64) # For the 64 dimensional features
 
         # shared MLP 1
-        self.conv1 = nn.Conv1d(6, 64, kernel_size=1)
+        self.conv1 = nn.Conv1d(num_channels, 64, kernel_size=1)
         self.conv2 = nn.Conv1d(64, 64, kernel_size=1)
 
         # shared MLP 2
         self.conv3 = nn.Conv1d(64, 64, kernel_size=1)
         self.conv4 = nn.Conv1d(64, 128, kernel_size=1)
-        self.conv5 = nn.Conv1d(128, self.num_global_feats, kernel_size=1)
+        self.conv5 = nn.Conv1d(128, 1024, kernel_size=1)
         
         # batch norms for both shared MLPs
         self.bn1 = nn.BatchNorm1d(64)
         self.bn2 = nn.BatchNorm1d(64)
         self.bn3 = nn.BatchNorm1d(64)
         self.bn4 = nn.BatchNorm1d(128)
-        self.bn5 = nn.BatchNorm1d(self.num_global_feats)
-
-        # max pool to get the global features
-        self.max_pool = nn.MaxPool1d(kernel_size=num_points, return_indices=True)
+        self.bn5 = nn.BatchNorm1d(1024)
 
     
     def forward(self, x):
-        print("PointNet Backbone")
-        print("x shape before tnet1: ", x.shape)
-        # get batch size
-        bs = x.shape[0]
         
-        # pass through first Tnet to get transform matrix
-        A_input = self.tnet1(x)
-        print("A_input shape: ", A_input.shape)
-
-        # perform first transformation across each point in the batch
-        x = torch.bmm(x.transpose(2, 1), A_input).transpose(2, 1)
-
-        # pass through first shared MLP
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
+        # get batch shape
+        B, C, N = x.shape
         
-        # get feature transform
-        A_feat = self.tnet2(x)
+        # Get First Transform matrix
+        Transf1 = self.tnet1(x) # (B, 3, 3)
+        if C < 3:
+            raise ValueError("Input must have at least 3 channels for xyz coordinates.")
+        
 
-        # perform second transformation across each (64 dim) feature in the batch
-        x = torch.bmm(x.transpose(2, 1), A_feat).transpose(2, 1)
-
-        # store local point features for segmentation head
-        local_features = x.clone()
-
-        # pass through second MLP
-        x = F.relu(self.bn3(self.conv3(x)))
-        x = F.relu(self.bn4(self.conv4(x)))
-        x = F.relu(self.bn5(self.conv5(x)))
-
-        # get global feature vector and critical indexes
-        global_features, critical_indexes = self.max_pool(x)
-        global_features = global_features.view(bs, -1)
-        critical_indexes = critical_indexes.view(bs, -1)
-
-        if self.local_feat:
-            features = torch.cat((local_features, 
-                                  global_features.unsqueeze(-1).repeat(1, 1, self.num_points)), 
-                                  dim=1)
-
-            return features, critical_indexes, A_feat
-
+        # Apply transform to position channels only
+        xyz = x[:, :3, :]
+        transformed_xyz = torch.bmm(xyz.transpose(2, 1), Transf1).transpose(2, 1)
+        if C > 3:
+            features = x[:, 3:, :]
+            x = torch.cat((transformed_xyz, features), dim=1)
         else:
-            return global_features, critical_indexes, A_feat
+            x = transformed_xyz
+
+        # shared MLP(64, 64)
+        x = F.relu(self.bn1(self.conv1(x))) # (B, 64, N)
+        x = F.relu(self.bn2(self.conv2(x))) # (B, 64, N)
+        
+        # Get and apply Second Transform matrix
+        Transf2 = self.tnet2(x) # (B, 64, 64)
+        x = torch.bmm(x.transpose(2, 1), Transf2).transpose(2, 1) # (B, 64, N)
+        local_features = x.clone() # (B, 64, N)
+
+        # shared MLP(64, 128, 1024)
+        x = F.relu(self.bn3(self.conv3(x))) # (B, 64, N)
+        x = F.relu(self.bn4(self.conv4(x))) # (B, 128, N)
+        x = F.relu(self.bn5(self.conv5(x))) # (B, 1024, N)
+
+        # Max pooling to get global features
+        global_features, critical_indexes = torch.max(x, dim=2, keepdim=True)  # (B, 1024, 1), (B, 1024)
+        global_features = global_features.view(B, -1) # (B, 1024)
+
+        # Output
+        if self.append_local_feat: # for Segmentation
+            global_expanded = global_features.unsqueeze(-1) # (B, 1024, 1) # extra dim for broadcasting
+            global_expanded = global_expanded.repeat(1, 1, N) # (B, 1024, N)
+            locnglob_features = torch.cat((local_features, global_expanded), dim=1) # (B, 1088, N)
+
+            if self.return_critical_indexes:
+                return locnglob_features, critical_indexes
+            else:
+                return locnglob_features
+            
+        else: # for Classification
+            if self.return_critical_indexes:
+                return global_features, critical_indexes
+            else:
+                return global_features
 
 # ============================================================================
 # Classification Head
