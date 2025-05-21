@@ -51,7 +51,6 @@ def merge_configs(yaml_config, cli_args):
         "DATA_PATH": yaml_config["DATA_PATH"],
         "OBJECT_NAME": yaml_config["OBJECT_NAME"],
         "MODELS_PATH": yaml_config["MODELS_PATH"],
-        "NUM_POINTS_PER_SEG_SAMPLE": yaml_config["NUM_POINTS_PER_SEG_SAMPLE"],
         "DEVICE": yaml_config.get("DEVICE", "cpu"),
         "USE_COLORS": yaml_config.get("USE_COLORS", True),
         "BATCH_SIZE": train_config.get("BATCH_SIZE", 4),

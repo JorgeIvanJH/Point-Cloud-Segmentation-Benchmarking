@@ -2,20 +2,18 @@ import numpy as np
 import torch
 
 
-def pointnet(c, device, num_classes):
+def pointnet(c, device, num_channels, num_classes):
     print(f"Using PointNet model for segmentation on {c['OBJECT_NAME']}")
     
     from models.architectures.pointnet import PointNetSegHead, PointNetSegLoss
     
     model = PointNetSegHead(
-        num_points=c["NUM_POINTS_PER_SEG_SAMPLE"],
-        m=num_classes
+        num_channels=num_channels,
+        num_output_classes=num_classes
     ).to(device)
 
     loss_fn = PointNetSegLoss(
-        alpha=np.ones(num_classes),
-        gamma=1,
-        dice=True
+        alpha=np.ones(num_classes)
     ).to(device)
 
     return model, loss_fn
@@ -40,7 +38,7 @@ def pointnet2(c, device, num_classes):
     return model, loss_fn
 
 
-def select_model(model_name: str, config: dict, device: torch.device, num_classes: int):
+def select_model(model_name: str, config: dict, device: torch.device, num_channels:int, num_classes: int):
     """Select and initialize the appropriate segmentation model."""
 
     model_registry = {
@@ -52,6 +50,6 @@ def select_model(model_name: str, config: dict, device: torch.device, num_classe
     if model_fn is None:
         raise ValueError(f"[ERROR] Model '{model_name}' not found. Available: {list(model_registry.keys())}")
 
-    model, loss_fn = model_fn(config, device, num_classes)
+    model, loss_fn = model_fn(config, device, num_channels, num_classes)
     return model, loss_fn
 

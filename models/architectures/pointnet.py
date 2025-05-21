@@ -90,16 +90,14 @@ class PointNetBackbone(nn.Module):
     def forward(self, x):
         
         # get batch shape
-        B, C, N = x.shape
+        B, C, N = x.shape # (B, num_channels, num_points)
         
-        # Get First Transform matrix
-        Transf1 = self.tnet1(x) # (B, 3, 3)
         if C < 3:
             raise ValueError("Input must have at least 3 channels for xyz coordinates.")
         
-
-        # Apply transform to position channels only
+        # Get and Apply transform to position channels only
         xyz = x[:, :3, :]
+        Transf1 = self.tnet1(xyz) # (B, 3, 3)
         transformed_xyz = torch.bmm(xyz.transpose(2, 1), Transf1).transpose(2, 1)
         if C > 3:
             features = x[:, 3:, :]
@@ -132,72 +130,78 @@ class PointNetBackbone(nn.Module):
             locnglob_features = torch.cat((local_features, global_expanded), dim=1) # (B, 1088, N)
 
             if self.return_critical_indexes:
-                return locnglob_features, critical_indexes
+                return locnglob_features, critical_indexes # (B, 1088, N), (B, 1024)
             else:
-                return locnglob_features
+                return locnglob_features # (B, 1088, N)
             
         else: # for Classification
             if self.return_critical_indexes:
-                return global_features, critical_indexes
+                return global_features, critical_indexes # (B, 1024), (B, 1024)
             else:
-                return global_features
+                return global_features # (B, 1024)
 
-# ============================================================================
-# Classification Head
+
+
 class PointNetClassHead(nn.Module):
     '''' Classification Head '''
-    def __init__(self, num_points, num_global_feats=1024, k=2):
+    def __init__(self, num_channels=3, return_critical_indexes=False, num_output_classes=2):
         super(PointNetClassHead, self).__init__()
 
-        # get the backbone (only need global features for classification)
-        self.backbone = PointNetBackbone(num_points, num_global_feats, local_feat=False)
+        self.return_critical_indexes = return_critical_indexes
 
-        # MLP for classification
-        self.linear1 = nn.Linear(num_global_feats, 512)
+        # get the backbone (only need global features for classification)
+        self.backbone = PointNetBackbone(num_channels,False,return_critical_indexes)
+
+        # MLP (512, 256, k)
+        self.linear1 = nn.Linear(1024, 512)
         self.linear2 = nn.Linear(512, 256)
-        self.linear3 = nn.Linear(256, k)
+        self.linear3 = nn.Linear(256, num_output_classes)
 
         # batchnorm for the first 2 linear layers
         self.bn1 = nn.BatchNorm1d(512)
         self.bn2 = nn.BatchNorm1d(256)
 
-        # The paper states that batch norm was only added to the layer 
-        # before the classication layer, but another version adds dropout  
-        # to the first 2 layers
-        self.dropout = nn.Dropout(p=0.3)
+        # dropout for the last linear layer
+        self.dropout = nn.Dropout(p=0.3) # "keep ratio 0.7 on the last fully connected layer"
         
 
     def forward(self, x):
-        # get global features
-        x, crit_idxs, A_feat = self.backbone(x) 
 
-        x = F.relu(self.bn1(self.linear1(x)))
-        x = F.relu(self.bn2(self.linear2(x)))
-        x = self.dropout(x)
-        x = self.linear3(x)
+        if self.return_critical_indexes:
+            # get global features and critical indexes
+            x, crit_idxs = self.backbone(x) # (B, 1024) , (B, 1024)
+        else:
+            # get global features
+            x = self.backbone(x) # (B, 1024)
 
-        # return logits
-        return x, crit_idxs, A_feat
+        x = F.relu(self.bn1(self.linear1(x))) # (B, 512)
+        x = F.relu(self.bn2(self.linear2(x))) # (B, 256)
+        x = self.dropout(x) # (B, 256)
+        x = self.linear3(x) # (B, num_output_classes)
 
-# ============================================================================
-# Segmentation Head
+        if self.return_critical_indexes:
+            # return logits and critical indexes
+            return x, crit_idxs # (B, num_output_classes), (B, 1024)
+        else:
+            # return logits only
+            return x # (B, num_output_classes)
+
+
 class PointNetSegHead(nn.Module):
     ''' Segmentation Head '''
-    def __init__(self, num_points, num_global_feats=1024, m=2):
+    def __init__(self, num_channels=3, return_critical_indexes=False, num_output_classes=2):
         super(PointNetSegHead, self).__init__()
 
-        self.num_points = num_points
-        self.m = m
+        self.return_critical_indexes = return_critical_indexes
 
         # get the backbone 
-        self.backbone = PointNetBackbone(num_points, num_global_feats, local_feat=True)
+        self.backbone = PointNetBackbone(num_channels,True,return_critical_indexes)
 
-        # shared MLP
-        num_features = num_global_feats + 64 # local and global features
-        self.conv1 = nn.Conv1d(num_features, 512, kernel_size=1)
+        # shared MLP(512, 256, 128, num_output_classes)
+        self.conv1 = nn.Conv1d(1088, 512, kernel_size=1)
         self.conv2 = nn.Conv1d(512, 256, kernel_size=1)
         self.conv3 = nn.Conv1d(256, 128, kernel_size=1)
-        self.conv4 = nn.Conv1d(128, m, kernel_size=1)
+        self.conv4 = nn.Conv1d(128, num_output_classes, kernel_size=1)
 
         # batch norms for shared MLP
         self.bn1 = nn.BatchNorm1d(512)
@@ -206,138 +210,64 @@ class PointNetSegHead(nn.Module):
 
 
     def forward(self, x):
-        
-        # get combined features
-        x, crit_idxs, A_feat = self.backbone(x) 
+    
+
+        if self.return_critical_indexes:
+            # get global features and critical indexes
+            x, crit_idxs = self.backbone(x) # (B, 1088, N), (B, 1024)
+        else:
+            # get global features
+            x = self.backbone(x) # (B, 1088, N)
 
         # pass through shared MLP
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
-        x = self.conv4(x)
+        x = F.relu(self.bn1(self.conv1(x))) # (B, 512, N)
+        x = F.relu(self.bn2(self.conv2(x))) # (B, 256, N)
+        x = F.relu(self.bn3(self.conv3(x))) # (B, 128, N)
+        x = self.conv4(x) # (B, num_output_classes, N)
 
-        x = x.transpose(2, 1)
+        x = x.transpose(2, 1) # (B, N, num_output_classes)
         
-        return x, crit_idxs, A_feat
+        if self.return_critical_indexes:
+            # return logits and critical indexes
+            return x, crit_idxs # (B, N, num_output_classes), (B, 1024)
+        else:
+            # return logits only
+            return x # (B, N, num_output_classes)
 
 
 class PointNetSegLoss(nn.Module):
-    def __init__(self, alpha=None, gamma=0, size_average=True, dice=False):
+    def __init__(self, alpha=None, reg_weight=0.001):
         super(PointNetSegLoss, self).__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-        self.size_average = size_average
-        self.dice = dice
-
-        # sanitize inputs
-        if isinstance(alpha,(float, int)): self.alpha = torch.Tensor([alpha,1-alpha])
-        if isinstance(alpha,(list, np.ndarray)): self.alpha = torch.Tensor(alpha)
-
-        # get Balanced Cross Entropy Loss
-        self.cross_entropy_loss = nn.CrossEntropyLoss(weight=self.alpha)
-        
-
-    def forward(self, predictions, targets, pred_choice=None):
-
-        # get Balanced Cross Entropy Loss
-        ce_loss = self.cross_entropy_loss(predictions.transpose(2, 1), targets)
-
-        # reformat predictions (b, n, c) -> (b*n, c)
-        predictions = predictions.contiguous().view(-1, predictions.size(2)) 
-        # get predicted class probabilities for the true class
-        pn = F.softmax(predictions)
-        pn = pn.gather(1, targets.view(-1, 1)).view(-1)
-
-        # compute loss (negative sign is included in ce_loss)
-        loss = ((1 - pn)**self.gamma * ce_loss)
-        if self.size_average: loss = loss.mean() 
-        else: loss = loss.sum()
-
-        # add dice coefficient if necessary
-        if self.dice: return loss + self.dice_loss(targets, pred_choice, eps=1)
-        else: return loss
-
-
-    @staticmethod
-    def dice_loss(predictions, targets, eps=1):
-        ''' Compute Dice loss, directly compare predictions with truth '''
-
-        targets = targets.reshape(-1)
-        predictions = predictions.reshape(-1)
-
-        cats = torch.unique(targets)
-
-        top = 0
-        bot = 0
-        for c in cats:
-            locs = targets == c
-
-            # get truth and predictions for each class
-            y_tru = targets[locs]
-            y_hat = predictions[locs]
-
-            top += torch.sum(y_hat == y_tru)
-            bot += len(y_tru) + len(y_hat)
-
-
-        return 1 - 2*((top + eps)/(bot + eps)) 
-
-
-def compute_iou(targets, predictions):
-
-    targets = targets.reshape(-1)
-    predictions = predictions.reshape(-1)
-
-    intersection = torch.sum(predictions == targets) # true positives
-    union = len(predictions) + len(targets) - intersection
-
-    return intersection / union
-
-
-class PointNetLoss(nn.Module):
-    def __init__(self, alpha=None, gamma=0, reg_weight=0, size_average=True):
-        super(PointNetLoss, self).__init__()
-        self.alpha = alpha
-        self.gamma = gamma
         self.reg_weight = reg_weight
-        self.size_average = size_average
 
-        # sanitize inputs
-        if isinstance(alpha,(float, int)): self.alpha = torch.Tensor([alpha,1-alpha])
-        if isinstance(alpha,(list, np.ndarray)): self.alpha = torch.Tensor(alpha)
+        # Prepare class weights if provided
+        if isinstance(alpha, (float, int)):
+            alpha = torch.Tensor([alpha, 1 - alpha])
+        elif isinstance(alpha, (list, np.ndarray)):
+            alpha = torch.Tensor(alpha)
+        
+        self.class_weights = alpha
+        self.cross_entropy = nn.CrossEntropyLoss(weight=self.class_weights)
 
-        # get Balanced Cross Entropy Loss
-        self.cross_entropy_loss = nn.CrossEntropyLoss(weight=self.alpha)
+    def forward(self, logits, targets, transform_matrix=None):
+        """
+        logits: (B, N, num_classes)
+        targets: (B, N)
+        transform_matrix: (B, D, D), from T-Net
+        """
+        # Cross-entropy loss over per-point logits
+        ce_loss = self.cross_entropy(logits.transpose(2, 1), targets)
 
-    def forward(self, predictions, targets, A):
-
-        # get batch size
-        bs = predictions.size(0)
-
-        # get Balanced Cross Entropy Loss
-        ce_loss = self.cross_entropy_loss(predictions, targets)
-
-        # reformat predictions and targets (segmentation only)
-        if len(predictions.shape) > 2:
-            predictions = predictions.transpose(1, 2) # (b, c, n) -> (b, n, c)
-            predictions = predictions.contiguous() \
-                                     .view(-1, predictions.size(2)) # (b, n, c) -> (b*n, c)
-
-        # get predicted class probabilities for the true class
-        pn = F.softmax(predictions)
-        pn = pn.gather(1, targets.view(-1, 1)).view(-1)
-
-        # get regularization term
-        if self.reg_weight > 0:
-            I = torch.eye(64).unsqueeze(0).repeat(A.shape[0], 1, 1) # .to(device)
-            if A.is_cuda: I = I.cuda()
-            reg = torch.linalg.norm(I - torch.bmm(A, A.transpose(2, 1)))
-            reg = self.reg_weight*reg/bs
+        # Orthogonality regularization loss
+        if transform_matrix is not None:
+            I = torch.eye(transform_matrix.size(1), device=transform_matrix.device).unsqueeze(0)
+            AAT = torch.bmm(transform_matrix, transform_matrix.transpose(2, 1))
+            reg_loss = ((AAT - I) ** 2).sum(dim=(1, 2)).mean()
+            total_loss = ce_loss + self.reg_weight * reg_loss
         else:
-            reg = 0
+            total_loss = ce_loss
 
-        # compute loss (negative sign is included in ce_loss)
-        loss = ((1 - pn)**self.gamma * ce_loss)
-        if self.size_average: return loss.mean() + reg
-        else: return loss.sum() + reg
+        return total_loss
+
+
 

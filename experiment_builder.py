@@ -167,16 +167,18 @@ class ExperimentBuilder:
     def run_iter(self, points, targets, train=True):
         """
         Runs either a training or evaluation iteration according to 'train'
+        points: (B, N, C) tensor of points
+        targets: (B, N, num_classes) tensor of targets
         """
         # Move to device
         points = points.transpose(2, 1).float().to(self.device)  # (B, C, N)
-        targets = torch.argmax(targets, dim=2).long().to(self.device)  # Convert from one-hot to class indices
+        targets = torch.argmax(targets, dim=2).long().to(self.device)  # (B, N)
 
         if train:
             self.model.train()
-            preds, _ = self.model(points)  # shape: (B, N, num_classes). TODO: see if we can remove the second output
-            pred_choice = torch.softmax(preds, dim=2).argmax(dim=2)
-            loss = self.loss_criterion(preds, targets, pred_choice)   
+            logits = self.model(points)  # (B, N, num_classes)
+            print("logits shape: ",logits.shape)
+            loss = self.loss_criterion(logits, targets)   
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -184,11 +186,11 @@ class ExperimentBuilder:
         else:
             self.model.eval()
             with torch.no_grad():
-                preds, _ = self.model(points)  # shape: (B, N, num_classes)
-                pred_choice = torch.softmax(preds, dim=2).argmax(dim=2)
-                loss = self.loss_criterion(preds, targets, pred_choice)
+                logits = self.model(points)  # (B, N, num_classes)
+                loss = self.loss_criterion(logits, targets)
 
         # Compute metrics
+        pred_choice = logits.argmax(dim=2)
         performance_metrics = {
             name: fn(pred_choice, targets) for name, fn in self.metrics.items()
         }
@@ -214,7 +216,7 @@ class ExperimentBuilder:
 
         """
         self.state["network"] = (
-            self.state_dict()
+            self.model.state_dict()
         )  # save network parameter and other variables.
         self.state["lowest_val_loss_model_idx"] = (
             lowest_val_loss_model_idx  # save current lowest val loss idx

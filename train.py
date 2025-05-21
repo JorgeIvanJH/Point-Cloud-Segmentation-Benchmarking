@@ -31,9 +31,16 @@ def main():
     )
 
     # Model
-    points, targets = next(iter(train_dataloader))
-    NUM_CLASSES = targets.unique().shape[0]
-    seg_model, criterion = select_model(c["MODEL_NAME"], c, DEVICE, NUM_CLASSES)
+    points, targets = next(iter(train_dataloader)) # (B, N, C) , (B, N, num_classes)
+    print(f"Points shape: {points.shape}")
+    print(f"Targets shape: {targets.shape}")
+    NUM_POINTS = points.shape[1]
+    assert points.shape[0] == targets.shape[0], "Batch size mismatch between points and targets"
+    assert points.shape[1] == targets.shape[1], "Number of points mismatch between points and targets"
+    print(f"Number of points per point cloud: {NUM_POINTS}")
+    NUM_CHANNELS = points.shape[2]
+    NUM_CLASSES = targets.shape[2]
+    seg_model, criterion = select_model(c["MODEL_NAME"], c, DEVICE, NUM_CHANNELS, NUM_CLASSES)
 
 
     # Training parameters and performance metrics
@@ -73,5 +80,6 @@ def main():
 
 if __name__ == '__main__':
 
-  # optional but recommended for Windows
+    print("Init Training")
+    print("WARNING: Make sure the first 3 channels in data are x,y,z coordinates")
     main()
