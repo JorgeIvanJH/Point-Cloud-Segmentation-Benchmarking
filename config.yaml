@@ -26,4 +26,8 @@ MODEL:
   NUM_LAYERS: 4
   DROPOUT: 0.5
   BATCH_NORM: true
-
+DATA: # Parameters for data processing
+  NUM_POINTS_PER_OBJECT: 2048 # number of points per object
+  NUM_OBJECTS: 10 # max number of objects in per point cloud sample (1 target and NUM_OBJECTS - 1 alien objects)
+  RAW_DATASET_DIR: D:\Datasets\MinimarketPointCloud\MiniMarket_raw  # Path to the main raw (unprocessed) dataset folder. Each subfolder represents a different object and contains its corresponding .pcd point cloud files.
+  POINTCLOUD_SAVE_DIR: D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds # Path to save processed point clouds in .h5 format and with the number of points specified in NUM_POINTS_PER_OBJECT
