@@ -7,8 +7,8 @@ import random
 
 
 
-def generate_hdf5_dataset_with_padding(input_dir, output_hdf5_path, num_points):
-
+def generate_hdf5_dataset_with_padding(input_dir, output_hdf5_path,  num_points= 2048, seed = 42):
+    np.random.seed(seed)
 
     pcd_files = sorted(glob.glob(os.path.join(input_dir, "*.pcd")))
 
@@ -28,7 +28,7 @@ def generate_hdf5_dataset_with_padding(input_dir, output_hdf5_path, num_points):
         n_points = points.shape[0]
 
         if n_points == 0:
-            print(f"[WARNING] Skipping empty point cloud: {pcd_path}")
+            print(f"Skipping empty point cloud: {pcd_path} because it has no points.")
             continue
 
         if n_points > num_points:
