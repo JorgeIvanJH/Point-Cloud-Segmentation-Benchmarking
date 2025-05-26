@@ -14,6 +14,11 @@ import yaml
 CONFIG_PATH = "../../config.yaml"
 
 
+import datetime
+
+# Get current timestamp
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
 
 # We want that:
 # 1. Each sample has fixed number of points NUM_POINTS
@@ -79,19 +84,19 @@ def generate_object_segmentation_dataset( objects_dataset_path, target_object_fi
         target_points = f["point_clouds"][()]  # returns as a numpy array
         target_colors = f["color_clouds"][()]  # returns as a numpy array
  
-    num_points_per_objects = target_points.shape[1] # assuming all objects will have the same sample size
-    NUM_POINTS_PER_SEG_SAMPLE = num_points_per_objects * max_num_objects  # Total number of points in each segmentation sample
+    num_points_per_object = target_points.shape[1] # assuming all objects will have the same sample size
+    NUM_POINTS_PER_SEG_SAMPLE = num_points_per_object * max_num_objects  # Total number of points in each segmentation sample
 
     for it in range(num_orientations):
-        num_individual_samples = target_points.shape[0]//num_orientations
-        for j in range(int(num_individual_samples)):
-            target_sample_index = random.randint(0, target_points.shape[0] - 1)
+        print(f"Orientation Sample {it+1} / {num_orientations}")
+        for target_sample_index in range(target_points.shape[0]):
+            print(f"Processing sample {target_sample_index + 1} / {target_points.shape[0]}")
 
             selected_target_sample_point = target_points[target_sample_index,:,:]
             selected_target_sample_color = target_colors[target_sample_index,:,:]
    
             # Convert to homogeneous coordinates (add a column of ones to the 3d points to be able to multiply with 4x4 homogeneous transform afterwards)
-            selected_target_sample_point = np.concatenate( (selected_target_sample_point, np.ones((num_points_per_objects,1))),axis=1)
+            selected_target_sample_point = np.concatenate( (selected_target_sample_point, np.ones((num_points_per_object,1))),axis=1)
 
             # Apply homogeneous transformation
             random_homogeneous_transformation = random_homogeneous_3d_translation(-0.25,0.25,-0.25,0.25,0.0,0.25) * random_homogeneous_3d_rotation(-180,180,-180,180,-180,180)
@@ -105,7 +110,7 @@ def generate_object_segmentation_dataset( objects_dataset_path, target_object_fi
             # Add the target object sample to the collective segmentation sample
             seg_sample_point = selected_target_sample_point
             seg_sample_color = selected_target_sample_color
-            seg_sample_label = np.concatenate( (np.ones((num_points_per_objects,1)), np.zeros((num_points_per_objects,1))),axis=1)  #one-hot encoding [1, 0]  (Object of interest)
+            seg_sample_label = np.concatenate( (np.ones((num_points_per_object,1)), np.zeros((num_points_per_object,1))),axis=1)  #one-hot encoding [1, 0]  (Object of interest)
 
             
 
@@ -131,7 +136,7 @@ def generate_object_segmentation_dataset( objects_dataset_path, target_object_fi
                     selected_alien_sample_color = alien_colors[alien_sample_index,:,:]
 
                     # Convert to homogeneous coordinates (add a column of ones to the 3d points to be able to multiply with 4x4 homogeneous transform afterwards)
-                    selected_alien_sample_point = np.concatenate( (selected_alien_sample_point, np.ones((num_points_per_objects,1))),axis=1)
+                    selected_alien_sample_point = np.concatenate( (selected_alien_sample_point, np.ones((num_points_per_object,1))),axis=1)
 
                     # Apply homogeneous transformation
                     random_homogeneous_transformation = random_homogeneous_3d_translation(-0.25,0.25,-0.25,0.25,0.0,0.25) * random_homogeneous_3d_rotation(-180,180,-180,180,-180,180)
@@ -144,7 +149,7 @@ def generate_object_segmentation_dataset( objects_dataset_path, target_object_fi
                     # Add the alien object sample to the collective segmentation sample
                     seg_sample_point = np.concatenate( (seg_sample_point, selected_alien_sample_point), axis=0 )
                     seg_sample_color = np.concatenate( (seg_sample_color, selected_alien_sample_color), axis=0 )
-                    seg_sample_label = np.concatenate( (seg_sample_label, np.concatenate( (np.zeros((num_points_per_objects,1)), np.ones((num_points_per_objects,1))),axis=1)), axis=0 )  # one-hot encoding [0, 1]  (Background/clutter)
+                    seg_sample_label = np.concatenate( (seg_sample_label, np.concatenate( (np.zeros((num_points_per_object,1)), np.ones((num_points_per_object,1))),axis=1)), axis=0 )  # one-hot encoding [0, 1]  (Background/clutter)
 
 
             # Pad the remaining sample size with zeros since we have varying number of objects per segmentation sample generated
@@ -159,7 +164,7 @@ def generate_object_segmentation_dataset( objects_dataset_path, target_object_fi
     
 
     # Save the segmentation samples to a new file
-    hdf5_filename = generated_dataset_path + "_segmentation_" + str(NUM_POINTS_PER_SEG_SAMPLE) + "_" + str(num_orientations*num_individual_samples) + ".h5"
+    hdf5_filename = f"{generated_dataset_path}_segmentation_{timestamp}_numPoints_{num_points_per_object}_maxObjects_{max_num_objects}_orientations_{num_orientations}.h5"
 
     with h5py.File(hdf5_filename, 'w') as f:
         # Create a point clouds dataset in the file

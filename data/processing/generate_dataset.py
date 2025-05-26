@@ -49,7 +49,7 @@ def gen_object_segmentation_dataset(yaml_config, data_config, POINTCLOUD_SAVE_DI
         os.makedirs(SEGMENTATION_SAVE_DIR)
     SEGMENTATION_SAVE_DIR = os.path.join(SEGMENTATION_SAVE_DIR, TARGET_OBJECT_NAME)
     print("Saving segmentation dataset to: ", SEGMENTATION_SAVE_DIR)
-    generate_object_segmentation_dataset( POINTCLOUD_SAVE_DIR, my_product_pcdataset_hdf5_file, SEGMENTATION_SAVE_DIR, data_config["MAX_NUM_OBJECTS"] )
+    generate_object_segmentation_dataset( POINTCLOUD_SAVE_DIR, my_product_pcdataset_hdf5_file, SEGMENTATION_SAVE_DIR, data_config["MAX_NUM_OBJECTS"], data_config["NUM_ORIENTATIONS"] )
 
 if __name__ == '__main__':
     yaml_config = load_yaml_config(CONFIG_PATH)
