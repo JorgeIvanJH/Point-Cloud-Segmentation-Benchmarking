@@ -86,11 +86,9 @@ def generate_object_segmentation_dataset(objects_dataset_path, target_object_fil
 
     # Iterate through orientations
     for it in range(num_orientations):
-        print(f"Orientation Sample {it+1} / {num_orientations}")
-
         # Process each target sample
         for target_sample_index in range(target_points.shape[0]):
-            print(f"Processing target sample {target_sample_index + 1} / {target_points.shape[0]}")
+            print(f"Orientation transformation {it+1} / {num_orientations}. Processing target sample {target_sample_index + 1} / {target_points.shape[0]}")
 
             selected_target_sample_point = target_points[target_sample_index, :, :]
             selected_target_sample_color = target_colors[target_sample_index, :, :]
