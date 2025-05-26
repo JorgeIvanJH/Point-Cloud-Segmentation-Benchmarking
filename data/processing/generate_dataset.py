@@ -25,18 +25,23 @@ def load_yaml_config(filepath="config.yaml"):
     
 def processing_of_individual_objects(yaml_config, data_config, POINTCLOUD_SAVE_DIR):
 
-    print("number of points per object: ", data_config["NUM_POINTS_PER_OBJECT"])
-    print("saving processed objects to: ", POINTCLOUD_SAVE_DIR)
-    for product_name in os.listdir(data_config["RAW_DATASET_DIR"]):
-        print("Processing product: ", product_name)
-        MY_PRODUCT_READ_DIR = os.path.join(data_config["RAW_DATASET_DIR"], product_name)
-        NUM_SAMPLES = len(os.listdir(MY_PRODUCT_READ_DIR)) # Number of samples is the number of .pcd files in the product directory, each a different sample of the same object with variations in pose, lighting, etc.
-        my_product_pcdataset_name = product_name + "_" + str(NUM_SAMPLES) + "_" + str(data_config["NUM_POINTS_PER_OBJECT"])
-        my_product_pcdataset_hdf5_file = my_product_pcdataset_name + ".h5"
-        MY_PRODUCT_PCDATASET_SAVE_DIR = os.path.join(POINTCLOUD_SAVE_DIR, my_product_pcdataset_hdf5_file)
-        generate_hdf5_dataset_with_padding(MY_PRODUCT_READ_DIR, MY_PRODUCT_PCDATASET_SAVE_DIR, data_config["NUM_POINTS_PER_OBJECT"], seed=yaml_config["SEED"])
+    list_of_products = [f for f in os.listdir(POINTCLOUD_SAVE_DIR) if f.endswith('.h5')]
+    if len(list_of_products) != data_config["NUM_PRODUCTS_IN_DATASET"]:
+        
+        print("Num prods: ", len(list_of_products))
+        print("number of points per object: ", data_config["NUM_POINTS_PER_OBJECT"])
+        print("saving processed objects to: ", POINTCLOUD_SAVE_DIR)
+        for product_name in os.listdir(data_config["RAW_DATASET_DIR"]):
+            print("Processing product: ", product_name)
+            MY_PRODUCT_READ_DIR = os.path.join(data_config["RAW_DATASET_DIR"], product_name)
+            NUM_SAMPLES = len(os.listdir(MY_PRODUCT_READ_DIR)) # Number of samples is the number of .pcd files in the product directory, each a different sample of the same object with variations in pose, lighting, etc.
+            my_product_pcdataset_name = product_name + "_" + str(NUM_SAMPLES) + "_" + str(data_config["NUM_POINTS_PER_OBJECT"])
+            my_product_pcdataset_hdf5_file = my_product_pcdataset_name + ".h5"
+            MY_PRODUCT_PCDATASET_SAVE_DIR = os.path.join(POINTCLOUD_SAVE_DIR, my_product_pcdataset_hdf5_file)
+            generate_hdf5_dataset_with_padding(MY_PRODUCT_READ_DIR, MY_PRODUCT_PCDATASET_SAVE_DIR, data_config["NUM_POINTS_PER_OBJECT"], seed=yaml_config["SEED"])
+    print("HDF5 Files of all products ready.")
 
-def gen_object_segmentation_dataset(yaml_config, data_config, POINTCLOUD_SAVE_DIR):
+def gen_object_segmentation_dataset(data_config, POINTCLOUD_SAVE_DIR):
     TARGET_OBJECT_NAME = data_config["TARGET_OBJECT_NAME"]
     list_of_products = os.listdir(POINTCLOUD_SAVE_DIR)
     prod_matching_name = [prod for prod in list_of_products if TARGET_OBJECT_NAME in prod] # Filter products that match the object name
@@ -55,15 +60,15 @@ if __name__ == '__main__':
     yaml_config = load_yaml_config(CONFIG_PATH)
     data_config = yaml_config["DATA"]
     POINTCLOUD_SAVE_DIR = os.path.join(data_config["POINTCLOUD_SAVE_DIR"], str(data_config["NUM_POINTS_PER_OBJECT"]))
+    print("POINTCLOUD_SAVE_DIR: ", POINTCLOUD_SAVE_DIR)
     if not os.path.exists(POINTCLOUD_SAVE_DIR): # Create folder for dataset with NUM_POINTS_PER_OBJECT 
         os.makedirs(POINTCLOUD_SAVE_DIR)
 
-    # UNCOMMENT LATER
-    # print("Generating processed HDF5 dataset of individual objects")
-    # processing_of_individual_objects(yaml_config, data_config, POINTCLOUD_SAVE_DIR)
+    print("Generating processed HDF5 dataset of individual objects")
+    processing_of_individual_objects(yaml_config, data_config, POINTCLOUD_SAVE_DIR)
     
     print("Generating processed HDF5 dataset of object segmentation")
-    gen_object_segmentation_dataset(yaml_config, data_config, POINTCLOUD_SAVE_DIR)
+    gen_object_segmentation_dataset(data_config, POINTCLOUD_SAVE_DIR)
 
     print("Dataset generation complete. Processed point clouds saved to:", POINTCLOUD_SAVE_DIR)
 
