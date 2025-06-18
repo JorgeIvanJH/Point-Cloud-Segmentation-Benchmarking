@@ -33,6 +33,18 @@ def get_point_cloud(DATASET_DIR, N):
     labels_sample = seg_labels[N, :, :]
     return points_sample, colors_sample, labels_sample
 
+def get_all_point_clouds(DATASET_DIR):
+    with h5py.File(DATASET_DIR, 'r') as f:
+        # Read datasets
+        seg_points = f["seg_points"][:]  
+        seg_colors = f["seg_colors"][:]  
+        seg_labels = f["seg_labels"][:]  
+    print(seg_points.shape)
+    print(seg_colors.shape)
+    print(seg_labels.shape)
+    
+    return seg_points, seg_colors, seg_labels
+
 def matplotlib_pc(points_sample, colors_sample, labels_sample):
 
     labels_sample = np.where((labels_sample == np.array([1, 0])).all(axis=1, keepdims=True), [0, 1, 0], [1, 0, 0])
@@ -66,47 +78,51 @@ def open3d_pc(points_sample, colors_sample, labels_sample):
     pcd_labels.colors = o3d.utility.Vector3dVector(labels_sample)
     o3d.visualization.draw_geometries([pcd_labels], window_name="Label Visualization")
 
-
-def add_floor(points_sample, colors_sample, labels_sample):
-    
+def add_floor(points_sample, colors_sample, labels_sample, num_floor_points=2000):
     # Step 1: Get valid object points
     object_mask = (labels_sample[:, 0] == 1)
     valid_mask = ~np.all(points_sample == 0, axis=1)
     object_points = points_sample[object_mask & valid_mask]
 
     is_colinear = True
-    while is_colinear == True:
+    while is_colinear:
         # Step 2: Select 3 random, well-spaced points to define a floor plane
         indices = np.random.choice(object_points.shape[0], size=3, replace=False)
         p1, p2, p3 = object_points[indices]
+
         # Step 3: Define plane basis using p1 as origin
         v1 = p2 - p1
         v2 = p3 - p1
         normal = np.cross(v1, v2)
         if np.linalg.norm(normal) == 0:
-            print("Chosen points are colinear; try again.")
-            is_colinear = True
-        else:
-            is_colinear = False
+            print("Chosen points are colinear; trying again.")
+            continue
+        is_colinear = False
         normal = normal / np.linalg.norm(normal)
 
     # Step 4: Create a grid of points in the plane (u, v are basis directions)
-    n = 100  # resolution of the floor
+    resolution = 200  # Generate a large enough grid to sample from
     u = v1 / np.linalg.norm(v1)
     v = np.cross(normal, u)
 
-    grid_u = np.linspace(-0.1, 0.1, n)
-    grid_v = np.linspace(-0.1, 0.1, n)
+    grid_u = np.linspace(-0.1, 0.1, resolution)
+    grid_v = np.linspace(-0.1, 0.1, resolution)
     uu, vv = np.meshgrid(grid_u, grid_v)
 
-    floor_points = p1 + uu[..., np.newaxis]*u + vv[..., np.newaxis]*v
-    floor_points = floor_points.reshape(-1, 3)
+    full_floor_points = p1 + uu[..., np.newaxis]*u + vv[..., np.newaxis]*v
+    full_floor_points = full_floor_points.reshape(-1, 3)
 
-    # Step 5: Create colors and labels for floor
-    floor_colors = np.tile(np.array([[0.5, 0.5, 0.5]]), (floor_points.shape[0], 1))
-    floor_labels = np.tile(np.array([[0., 1.]]), (floor_points.shape[0], 1))  # clutter
+    # Step 5: Randomly sample from the generated floor grid
+    total_floor = full_floor_points.shape[0]
+    num_samples = min(num_floor_points, total_floor)
+    sample_indices = np.random.choice(total_floor, size=num_samples, replace=False)
+    floor_points = full_floor_points[sample_indices]
 
-    # Step 6: Concatenate to original arrays
+    # Step 6: Create corresponding colors and labels
+    floor_colors = np.tile(np.array([[0.5, 0.5, 0.5]]), (num_samples, 1))
+    floor_labels = np.tile(np.array([[0., 1.]]), (num_samples, 1))  # clutter
+
+    # Step 7: Concatenate to original arrays
     points_augmented = np.vstack((points_sample, floor_points))
     colors_augmented = np.vstack((colors_sample, floor_colors))
     labels_augmented = np.vstack((labels_sample, floor_labels))
@@ -114,10 +130,36 @@ def add_floor(points_sample, colors_sample, labels_sample):
     return points_augmented, colors_augmented, labels_augmented
 
 
+# points_sample, colors_sample, labels_sample = get_point_cloud(DATASET_DIR, 1)
+# points_augmented, colors_augmented, labels_augmented = add_floor(points_sample, colors_sample, labels_sample)
+
+# print("points_augmented shape:", points_augmented.shape)
+# matplotlib_pc(points_augmented, colors_augmented, labels_augmented)
 
 
-points_sample, colors_sample, labels_sample = get_point_cloud(DATASET_DIR, 1)
-points_augmented, colors_augmented, labels_augmented = add_floor(points_sample, colors_sample, labels_sample)
+all_points_sample, all_colors_sample, all_labels_sample = get_all_point_clouds(DATASET_DIR)
+print("All points shape:", all_points_sample.shape)
 
-print("points_augmented shape:", points_augmented.shape)
-matplotlib_pc(points_augmented, colors_augmented, labels_augmented)
+
+all_seg_sample_points = []
+all_seg_sample_colors = []
+all_seg_sample_labels = []
+
+for points_sample, colors_sample, labels_sample in zip(all_points_sample, all_colors_sample, all_labels_sample):
+    points_augmented, colors_augmented, labels_augmented = add_floor(points_sample, colors_sample, labels_sample)
+
+    all_seg_sample_points.append(points_augmented)
+    all_seg_sample_colors.append(colors_augmented)
+    all_seg_sample_labels.append(labels_augmented)
+    
+
+with h5py.File(DATASET_OUTPUT_DIR, 'w') as f:
+    f.create_dataset("seg_points", data=np.asarray(all_seg_sample_points))
+    f.create_dataset("seg_colors", data=np.asarray(all_seg_sample_colors))
+    f.create_dataset("seg_labels", data=np.asarray(all_seg_sample_labels))
+
+
+
+
+points_sample, colors_sample, labels_sample = get_point_cloud(DATASET_OUTPUT_DIR, 0)
+matplotlib_pc(points_sample, colors_sample, labels_sample)
