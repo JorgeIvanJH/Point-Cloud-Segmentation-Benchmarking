@@ -7,9 +7,8 @@ import open3d as o3d
 import plotly.graph_objects as go
 
 # CHANGRABLE VARIABLES
-dataset_name = 'all_test_scenes.h5'
 N = 2  # Change this to visualize different scenes
-DATASET_DIR = os.path.join(os.getcwd(), dataset_name)
+DATASET_DIR = r"D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds\test\all_test_scenes.h5"
 
 def get_point_cloud(DATASET_DIR, N, percentage=1):
     with h5py.File(DATASET_DIR, 'r') as f:
@@ -23,7 +22,7 @@ def get_point_cloud(DATASET_DIR, N, percentage=1):
     idx_downsample = random.sample(range(num_points), new_num_points)
     point_clouds = point_clouds[N, idx_downsample, :]
     color_clouds = color_clouds[N, idx_downsample, :]
-    label_clouds = label_clouds[N, idx_downsample]
+    label_clouds = label_clouds[N, idx_downsample, :]
     # valid_mask = ~np.isnan(point_clouds).any(axis=1) & ~np.isnan(color_clouds).any(axis=1)
     # point_clouds = point_clouds[valid_mask]
     # color_clouds = color_clouds[valid_mask]

@@ -47,7 +47,7 @@ def pad_to_max_length(arrays, fill_value=0.0):
     return np.stack(padded)
 
 
-def generate_hdf5_dataset(input_dir, output_hdf5_path):
+def generate_labelled_hdf5_testset(input_dir, output_hdf5_path):
     """
     Likely to be used to process TESTING data, where padding is not required.
     """
@@ -84,8 +84,8 @@ def generate_hdf5_dataset(input_dir, output_hdf5_path):
         labels = np.zeros((n_points,2))
         labels[indices_background, 1] = 1
         labels[indices_object, 0] = 1
-        labels = np.where(labels == [1,1], [0,1], labels) # repeated to background
-        # labels = np.where(labels == [0,0], [0,1], labels) # repeated to object
+        labels[np.all(labels == [1, 1], axis=1)] = [0, 1] # repeated to background
+        labels[np.all(labels == [0, 0], axis=1)] = [0, 1] # repeated to object
         point_clouds.append(points)
         color_clouds.append(colors)
         label_clouds.append(labels)
@@ -100,17 +100,141 @@ def generate_hdf5_dataset(input_dir, output_hdf5_path):
         f.create_dataset("seg_points", data=pad_to_max_length(point_clouds), compression="gzip")
         f.create_dataset("seg_colors", data=pad_to_max_length(color_clouds), compression="gzip")
         f.create_dataset("seg_labels", data=pad_to_max_length(label_clouds), compression="gzip")
+    print("finished full labelled scenes generation")
+
+def get_voxel(points_sample, colors_sample, labels_sample, max_points_in_box=20480, increase_rate=0.001):
+    assert points_sample.shape[0] == colors_sample.shape[0] == labels_sample.shape[0], "Points, colors, and labels must have the same number of points"
+    assert points_sample.shape[0] >= max_points_in_box, "Number of points in the sample must be greater than or equal to max_points_in_box"
+    # Remove points at the origin
+    mask_not_in_origin = np.all(points_sample != np.array([0, 0, 0]), axis=1)
+    points_sample, colors_sample, labels_sample = points_sample[mask_not_in_origin], colors_sample[mask_not_in_origin], labels_sample[mask_not_in_origin]
+
+    # Select points belonging to the object (label [1, 0])
+    object_idxs = np.all(labels_sample == np.array([1, 0]), axis=1)
+    object_points = points_sample[object_idxs]
+    centroid = np.mean(object_points, axis=0)
+    
+    num_points_in_box = 0
+    box_edge = increase_rate
+    box_min = centroid - box_edge / 2
+    box_max = centroid + box_edge / 2
+    
+    # Expand box until we reach the desired number of points
+    while num_points_in_box < max_points_in_box:
+        points_in_box_mask = np.all((points_sample >= box_min) & (points_sample <= box_max), axis=1)
+        points_in_box = points_sample[points_in_box_mask]
+        colors_in_box = colors_sample[points_in_box_mask]  # Make sure this is assigned
+        labels_in_box = labels_sample[points_in_box_mask]  # Make sure this is assigned
+        num_points_in_box = points_in_box.shape[0]
+        
+        if num_points_in_box < max_points_in_box:
+            box_edge += increase_rate
+            box_min = centroid - box_edge / 2
+            box_max = centroid + box_edge / 2
+
+    # If fewer points, pad with zeros
+    if num_points_in_box < max_points_in_box:
+        padding_size = max_points_in_box - num_points_in_box
+        points_padding = np.zeros((padding_size, points_sample.shape[1]))
+        colors_padding = np.zeros((padding_size, colors_sample.shape[1]))
+        labels_padding = np.zeros((padding_size, labels_sample.shape[1]))
+        
+        # Concatenate the original points with padding
+        points_in_box = np.vstack((points_in_box, points_padding))
+        colors_in_box = np.vstack((colors_in_box, colors_padding))
+        labels_in_box = np.vstack((labels_in_box, labels_padding))
+
+    # If more points, randomly sample to match max_points_in_box
+    elif num_points_in_box > max_points_in_box:
+        random_indices = np.random.choice(num_points_in_box, size=max_points_in_box, replace=False)
+        points_in_box = points_in_box[random_indices]
+        colors_in_box = colors_in_box[random_indices]  # Now correctly using colors_in_box
+        labels_in_box = labels_in_box[random_indices]  # Now correctly using labels_in_box
+        
+    assert points_in_box.shape[0] == max_points_in_box, "Number of points in box does not match max_points_in_box"
+    assert colors_in_box.shape[0] == max_points_in_box, "Number of colors in box does not match max_points_in_box"
+    assert labels_in_box.shape[0] == max_points_in_box, "Number of labels in box does not match max_points_in_box"
+
+    return points_in_box, colors_in_box, labels_in_box
+
+def generate_augmented_testset(input_full_hdf5_dir, num_orientations=10, num_downsamplings = 10, range_downsampling=[0.1, 1.0], max_points_in_box=20480, increase_rate=0.001):
+    """
+    Generates an augmented test set by applying random transformations to the point clouds.
+    """
+    with h5py.File(input_full_hdf5_dir, "r") as f:
+        point_clouds = f["seg_points"][:]
+        color_clouds = f["seg_colors"][:]
+        label_clouds = f["seg_labels"][:]
+    B, num_points, _ = point_clouds.shape
 
 
-    print("finished")
+    all_seg_sample_points = []
+    all_seg_sample_colors = []
+    all_seg_sample_labels = []
+
+    for i in range(B):
+        for j in range(num_orientations):
+            for k in range(num_downsamplings):
+                print(f"Processing point cloud {i+1}/{B}, orientation {j+1}/{num_orientations}, downsampling {k+1}/{num_downsamplings}")
+                # Random rotation
+                rotation_angle = np.random.uniform(0, 2 * np.pi)
+                rotation_axis = np.random.uniform(-1, 1, size=3)
+                rotation_axis /= np.linalg.norm(rotation_axis)
+                rotation_matrix = o3d.geometry.get_rotation_matrix_from_axis_angle(rotation_axis * rotation_angle)
+
+                # Apply rotation
+                rotated_points = point_clouds[i] @ rotation_matrix.T
+                rotated_colors = color_clouds[i]
+                rotated_labels = label_clouds[i]
+
+                # Random downsampling
+                downsample_factor = np.random.uniform(range_downsampling[0], range_downsampling[1])
+                num_downsampled_points = int(num_points * downsample_factor)
+                if num_downsampled_points < num_points:
+                    indices = np.random.choice(num_points, num_downsampled_points, replace=False)
+                    downsampled_points = rotated_points[indices]
+                    downsampled_colors = rotated_colors[indices]
+                    downsampled_labels = rotated_labels[indices]
+                else:
+                    downsampled_points = rotated_points
+                    downsampled_colors = rotated_colors
+                    downsampled_labels = rotated_labels
+
+                # Get voxel around the object of interest
+                downsampled_points, downsampled_colors, downsampled_labels = get_voxel(
+                    downsampled_points, downsampled_colors, downsampled_labels,
+                    max_points_in_box=max_points_in_box, increase_rate=increase_rate
+                )
+
+                # Append to the lists
+                all_seg_sample_points.append(downsampled_points)
+                all_seg_sample_colors.append(downsampled_colors)
+                all_seg_sample_labels.append(downsampled_labels)
+
+    # Save the augmented point cloud
+    output_filename = f"augmented_scenes_{B}_orientations{j}_downsamplings{k}.h5"
+    output_dir = os.path.join(os.path.dirname(input_full_hdf5_dir), output_filename)
+    print(f"Saving augmented dataset to: {output_dir}")
+    with h5py.File(output_dir, 'w') as f:
+        f.create_dataset("seg_points", data=np.asarray(all_seg_sample_points))
+        f.create_dataset("seg_colors", data=np.asarray(all_seg_sample_colors))
+        f.create_dataset("seg_labels", data=np.asarray(all_seg_sample_labels))
 
 if __name__ == '__main__':
 
-    input_dir = r"D:\Datasets\MinimarketPointCloud\MiniMarket_raw_test\unlabelled"
-    cleaned_input_dir = r"D:\Datasets\MinimarketPointCloud\MiniMarket_raw_test\unlabelled_clean"
-    # clean_point_clouds(input_dir, cleaned_input_dir) # CLEAN
-    input_labelled_dir = r"D:\Datasets\MinimarketPointCloud\MiniMarket_raw_test\labelled"
-    output_hdf5_path = r"D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds\test"
-    output_filename = "all_test_scenes.h5"
-    output_hdf5_path = os.path.join(output_hdf5_path, output_filename)
-    generate_hdf5_dataset(input_labelled_dir, output_hdf5_path) # GENERATE HDF5 DATASET
+    # raw_input_dir = r"D:\Datasets\MinimarketPointCloud\MiniMarket_raw_test\unlabelled"
+    # cleaned_input_dir = r"D:\Datasets\MinimarketPointCloud\MiniMarket_raw_test\unlabelled_clean" # UPLOAD THESE .pcd TO THE LABELLING WEB APP
+    # clean_point_clouds(raw_input_dir, cleaned_input_dir) # CLEAN
+    # input_labelled_dir = r"D:\Datasets\MinimarketPointCloud\MiniMarket_raw_test\labelled" # WHEN DOWNLOADING, STORE THE LABELLED .pcd AND .json FILES HERE
+    # output_full_hdf5_dir = r"D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds\test" # HERE THE HDF5 FILE WILL BE SAVED
+    # output_full_labelled_scene_filename = "all_test_scenes.h5"
+    # output_full_hdf5_dir = os.path.join(output_full_hdf5_dir, output_full_labelled_scene_filename)
+    # generate_labelled_hdf5_testset(input_labelled_dir, output_full_hdf5_dir) # GENERATE HDF5 DATASET WITH 
+    input_full_hdf5_dir = r"D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds\test\all_test_scenes.h5"
+    # MODIFIABLE PARAMETERS
+    num_orientations=10
+    num_downsamplings = 10
+    range_downsampling=[0.1, 1.0]
+    max_points_in_box=20480
+    increase_rate=0.001
+    generate_augmented_testset(input_full_hdf5_dir, num_orientations, num_downsamplings, range_downsampling, max_points_in_box, increase_rate)
