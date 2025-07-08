@@ -27,6 +27,7 @@ MODEL:
   DROPOUT: 0.5
   BATCH_NORM: true
 DATA: # Parameters for data processing
+  WITH_REAL_BACKGROUND: True # CHANGE TO TAKE BACKGROUND FROM REAL SCENES IN THE TEST SET
   NUM_POINTS_PER_OBJECT: 2048 # number of points per object
   MAX_NUM_OBJECTS: 10 # max number of objects in per point cloud sample (1 target and NUM_OBJECTS - 1 alien objects)
   RAW_DATASET_DIR: D:\Datasets\MinimarketPointCloud\MiniMarket_raw  # Path to the main raw (unprocessed) dataset folder. Each subfolder represents a different object and contains its corresponding .pcd point cloud files.
@@ -34,3 +35,5 @@ DATA: # Parameters for data processing
   TARGET_OBJECT_NAME: ketchup_heinz_400ml # Name of the object to segment out of the raw dataset. The script will assign point of TARGET_OBJECT_NAME to make the target class mask and all other points to the alien class mask.
   NUM_ORIENTATIONS: 10 # Number of orientations to generate for each object. The script will generate NUM_ORIENTATIONS copies of each object with different orientations.
   NUM_PRODUCTS_IN_DATASET: 82 # NOT LIKELY TO CHANGE! Number of products in the dataset. The script will generate point clouds for all products in the dataset.
+  RAW_TEST_SET_DIR: D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds\test\all_test_scenes.h5
+  NUM_SCENES: 1200

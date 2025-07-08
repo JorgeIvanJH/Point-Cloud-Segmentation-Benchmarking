@@ -4,8 +4,7 @@ import glob
 import numpy as np
 import h5py
 from matplotlib import pyplot as plt
-from processing.hdf5_dataset_generation import generate_hdf5_dataset_with_padding
-from processing.single_object_preparation import generate_object_segmentation_dataset
+from single_object_preparation import generate_object_segmentation_dataset,generate_object_segmentation_dataset_wreal_background
 import random
 import getpass
 import h5py
@@ -98,8 +97,8 @@ def processing_of_individual_objects(yaml_config, data_config, POINTCLOUD_SAVE_D
             generate_hdf5_dataset_with_padding(MY_PRODUCT_READ_DIR, MY_PRODUCT_PCDATASET_SAVE_DIR, data_config["NUM_POINTS_PER_OBJECT"], seed=yaml_config["SEED"])
     print("HDF5 Files of all products ready.")
 
-def gen_object_segmentation_dataset(data_config, POINTCLOUD_SAVE_DIR):
-    TARGET_OBJECT_NAME = data_config["TARGET_OBJECT_NAME"]
+def gen_object_segmentation_dataset(data_config, POINTCLOUD_SAVE_DIR, WITH_REAL_BACKGROUND=False):
+    TARGET_OBJECT_NAME = data_config["TARGET_OBJECT_NAME"] # e.g: "ketchup_heinz_400ml"
     list_of_products = os.listdir(POINTCLOUD_SAVE_DIR)
     prod_matching_name = [prod for prod in list_of_products if TARGET_OBJECT_NAME in prod] # Filter products that match the object name
     if len(prod_matching_name) != 1:
@@ -110,23 +109,26 @@ def gen_object_segmentation_dataset(data_config, POINTCLOUD_SAVE_DIR):
     if not os.path.exists(SEGMENTATION_SAVE_DIR): # Create folder for segmentation dataset
         os.makedirs(SEGMENTATION_SAVE_DIR)
     SEGMENTATION_SAVE_DIR = os.path.join(SEGMENTATION_SAVE_DIR, TARGET_OBJECT_NAME)
-    print("Saving segmentation dataset to: ", SEGMENTATION_SAVE_DIR)
-    generate_object_segmentation_dataset( POINTCLOUD_SAVE_DIR, my_product_pcdataset_hdf5_file, SEGMENTATION_SAVE_DIR, data_config["MAX_NUM_OBJECTS"], data_config["NUM_ORIENTATIONS"] )
+    if not WITH_REAL_BACKGROUND:
+        print("Saving segmentation dataset to: ", SEGMENTATION_SAVE_DIR)
+        generate_object_segmentation_dataset( POINTCLOUD_SAVE_DIR, my_product_pcdataset_hdf5_file, SEGMENTATION_SAVE_DIR, data_config["MAX_NUM_OBJECTS"], data_config["NUM_ORIENTATIONS"] )
+    else:
+        print("Generating segmentation dataset with real background. This may take a while...")
+        generate_object_segmentation_dataset_wreal_background( POINTCLOUD_SAVE_DIR, my_product_pcdataset_hdf5_file, SEGMENTATION_SAVE_DIR, data_config["MAX_NUM_OBJECTS"], data_config["NUM_ORIENTATIONS"], data_config )
+
 
 if __name__ == '__main__':
     yaml_config = load_yaml_config(CONFIG_PATH)
     data_config = yaml_config["DATA"]
+    WITH_REAL_BACKGROUND = data_config["WITH_REAL_BACKGROUND"] # If True, the background will be taken from real scenes in the test set
     POINTCLOUD_SAVE_DIR = os.path.join(data_config["POINTCLOUD_SAVE_DIR"], str(data_config["NUM_POINTS_PER_OBJECT"]))
     print("POINTCLOUD_SAVE_DIR: ", POINTCLOUD_SAVE_DIR)
     if not os.path.exists(POINTCLOUD_SAVE_DIR): # Create folder for dataset with NUM_POINTS_PER_OBJECT 
         os.makedirs(POINTCLOUD_SAVE_DIR)
-
     print("Generating processed HDF5 dataset of individual objects")
     processing_of_individual_objects(yaml_config, data_config, POINTCLOUD_SAVE_DIR)
-    
     print("Generating processed HDF5 dataset of object segmentation")
-    gen_object_segmentation_dataset(data_config, POINTCLOUD_SAVE_DIR)
-
+    gen_object_segmentation_dataset(data_config, POINTCLOUD_SAVE_DIR, WITH_REAL_BACKGROUND)
     print("Dataset generation complete. Processed point clouds saved to:", POINTCLOUD_SAVE_DIR)
 
 

@@ -155,15 +155,20 @@ def get_voxel(points_sample, colors_sample, labels_sample, max_points_in_box=204
 
 
 # Sample visualization call
-PC_SELECTED = 400 # np.random.randint(1000)  # Change this to visualize different scenes
-percentage = 0.5 # Take a percentage of points, e.g., 25%
-DATASET_DIR = r"D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds\test\augmented_scenes_10_orientations9_downsamplings9.h5"
+PC_SELECTED = 1 # np.random.randint(1000)  # Change this to visualize different scenes
+percentage = 1 # Take a percentage of points, e.g., 25%
+DATASET_DIR = r"D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds\2048\segmentation_dataset\REAL_BACKGROUND_ketchup_heinz_400ml_numPoints_20480_maxObjects_10_numscenes_100.h5"
 # Load data
 for PC_SELECTED in range(1000):
+    print("PC_SELECTED: ", PC_SELECTED)
     points_sample, colors_sample, labels_sample = get_point_cloud(DATASET_DIR, PC_SELECTED, percentage)
     print("points_sample shape:", points_sample.shape)
     print("colors_sample shape:", colors_sample.shape)
     print("labels_sample shape:", labels_sample.shape)
+    assert points_sample.shape[0] == colors_sample.shape[0] == labels_sample.shape[0] == 20480
+    assert points_sample.shape[1] == 3, "Points should have 3 dimensions (x, y, z)"
+    assert colors_sample.shape[1] == 3, "Colors should have 3 dimensions (r, g, b)"
+    assert labels_sample.shape[1] == 2, "Labels should have 2 dimensions (target, alien)"
     # Visualize the original sample
-    plot_pointcloud(points_sample, colors=colors_sample)
-    plot_pointcloud(points_sample, labels= labels_sample)
+    # plot_pointcloud(points_sample, colors=colors_sample)
+    # plot_pointcloud(points_sample, labels= labels_sample)
