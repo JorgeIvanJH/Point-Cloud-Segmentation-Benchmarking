@@ -51,7 +51,7 @@ def apply_random_transformation(points, num_points):
 
 
 # Main function to generate the object segmentation dataset
-def generate_object_segmentation_dataset(objects_dataset_path, target_object_filename, generated_dataset_path, max_num_objects, num_orientations=10):
+def generate_object_segmentation_dataset(objects_dataset_path, target_object_filename, generated_dataset_path, data_config):
     """
     objects_dataset_path: Path to the directory containing the processed dataset files with specific number of points per object (HDF5 files).
     target_object_filename: The filename of the target object HDF5 file (e.g., "object_1.h5").
@@ -65,6 +65,10 @@ def generate_object_segmentation_dataset(objects_dataset_path, target_object_fil
 
     """
     print("Generated Dataset Path: ", generated_dataset_path)
+
+    max_num_objects  = data_config["MAX_NUM_OBJECTS"]
+    min_num_objects = data_config["MIN_NUM_OBJECTS"]
+    num_orientations = data_config["NUM_ORIENTATIONS"]
 
     all_seg_sample_points = []
     all_seg_sample_colors = []
@@ -81,14 +85,18 @@ def generate_object_segmentation_dataset(objects_dataset_path, target_object_fil
         target_colors = f["color_clouds"][()]  # numpy array
 
     num_points_per_object = target_points.shape[1]
+    num_samples_per_object = target_points.shape[0]
     NUM_POINTS_PER_SEG_SAMPLE = num_points_per_object * max_num_objects
 
+    num_samples = 0
     # Iterate through orientations
     for it in range(num_orientations):
         # Process each target sample
-        for target_sample_index in range(target_points.shape[0]):
-            print(f"Orientation transformation {it+1} / {num_orientations}. Processing target sample {target_sample_index + 1} / {target_points.shape[0]}")
+        for ts in range(num_samples_per_object):
 
+            num_samples += 1
+            print(f"Orientation transformation {it+1} / {num_orientations}. Processing target sample {ts + 1} / {num_samples_per_object}")
+            target_sample_index = random.randrange(num_samples_per_object)  # Randomly select a target sample index
             selected_target_sample_point = target_points[target_sample_index, :, :]
             selected_target_sample_color = target_colors[target_sample_index, :, :]
 
@@ -101,7 +109,7 @@ def generate_object_segmentation_dataset(objects_dataset_path, target_object_fil
             seg_sample_label = np.concatenate((np.ones((num_points_per_object, 1)), np.zeros((num_points_per_object, 1))), axis=1)  # One-hot encoding [1, 0]
 
             # Random number of alien objects
-            NUM_ALIEN_OBJECTS = random.randrange(max_num_objects - 1)
+            NUM_ALIEN_OBJECTS = random.randrange(min_num_objects, max_num_objects) - 1
             print(f"Processing sample {target_sample_index}, Number of alien objects: {NUM_ALIEN_OBJECTS}")
 
             # Randomly select alien object files
@@ -137,14 +145,15 @@ def generate_object_segmentation_dataset(objects_dataset_path, target_object_fil
             all_seg_sample_points.append(seg_sample_point)
             all_seg_sample_colors.append(seg_sample_color)
             all_seg_sample_labels.append(seg_sample_label)
-
-    # Save the dataset
-    hdf5_filename = f"{generated_dataset_path}_segmentation_{timestamp}_numPoints_{num_points_per_object}_maxObjects_{max_num_objects}_numrientations_{num_orientations}.h5"
-    with h5py.File(hdf5_filename, 'w') as f:
-        f.create_dataset("seg_points", data=np.asarray(all_seg_sample_points))
-        f.create_dataset("seg_colors", data=np.asarray(all_seg_sample_colors))
-        f.create_dataset("seg_labels", data=np.asarray(all_seg_sample_labels))
-
+            
+            if num_samples % 100 == 0:
+                print(f"Processed {num_samples} samples so far.")
+                # Save the dataset
+                hdf5_filename = f"{generated_dataset_path}_segmentation_{timestamp}_numPoints_{num_points_per_object}_minObjects_{min_num_objects}_maxObjects_{max_num_objects}_numrientations_{num_orientations}.h5"
+                with h5py.File(hdf5_filename, 'w') as f:
+                    f.create_dataset("seg_points", data=np.asarray(all_seg_sample_points))
+                    f.create_dataset("seg_colors", data=np.asarray(all_seg_sample_colors))
+                    f.create_dataset("seg_labels", data=np.asarray(all_seg_sample_labels))
     print("Dataset generation complete!")
     return
 

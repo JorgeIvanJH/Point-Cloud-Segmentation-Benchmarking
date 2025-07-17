@@ -111,7 +111,7 @@ def gen_object_segmentation_dataset(data_config, POINTCLOUD_SAVE_DIR, WITH_REAL_
     SEGMENTATION_SAVE_DIR = os.path.join(SEGMENTATION_SAVE_DIR, TARGET_OBJECT_NAME)
     if not WITH_REAL_BACKGROUND:
         print("Saving segmentation dataset to: ", SEGMENTATION_SAVE_DIR)
-        generate_object_segmentation_dataset( POINTCLOUD_SAVE_DIR, my_product_pcdataset_hdf5_file, SEGMENTATION_SAVE_DIR, data_config["MAX_NUM_OBJECTS"], data_config["NUM_ORIENTATIONS"] )
+        generate_object_segmentation_dataset( POINTCLOUD_SAVE_DIR, my_product_pcdataset_hdf5_file, SEGMENTATION_SAVE_DIR, data_config )
     else:
         print("Generating segmentation dataset with real background. This may take a while...")
         generate_object_segmentation_dataset_wreal_background( POINTCLOUD_SAVE_DIR, my_product_pcdataset_hdf5_file, SEGMENTATION_SAVE_DIR, data_config["MAX_NUM_OBJECTS"], data_config["NUM_ORIENTATIONS"], data_config )
