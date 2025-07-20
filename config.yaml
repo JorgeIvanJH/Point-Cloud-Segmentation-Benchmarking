@@ -38,3 +38,4 @@ DATA: # Parameters for data processing
   NUM_PRODUCTS_IN_DATASET: 82 # NOT LIKELY TO CHANGE! Number of products in the dataset. The script will generate point clouds for all products in the dataset.
   RAW_TEST_SET_DIR: D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds\test\all_test_scenes.h5
   NUM_SCENES: 1200
+  CHECKPOINT_DIR: D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds\10240\segmentation_dataset\ketchup_heinz_400ml_segmentation_date_20250717_time_135022_numPoints_10240_minObjects_9_maxObjects_10_numrientations_10.h5

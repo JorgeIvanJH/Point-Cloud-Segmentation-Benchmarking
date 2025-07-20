@@ -70,9 +70,21 @@ def generate_object_segmentation_dataset(objects_dataset_path, target_object_fil
     min_num_objects = data_config["MIN_NUM_OBJECTS"]
     num_orientations = data_config["NUM_ORIENTATIONS"]
 
-    all_seg_sample_points = []
-    all_seg_sample_colors = []
-    all_seg_sample_labels = []
+    if data_config["CHECKPOINT_DIR"]:
+        CHECKPOINT_DIR = data_config["CHECKPOINT_DIR"]
+        with h5py.File(CHECKPOINT_DIR, 'r') as f:
+            point_clouds = f["seg_points"][:]
+            color_clouds = f["seg_colors"][:]
+            label_clouds = f["seg_labels"][:]
+        all_seg_sample_points = [pc for pc in point_clouds]
+        all_seg_sample_colors = [cc for cc in color_clouds]
+        all_seg_sample_labels = [lc for lc in label_clouds]
+        num_samples = len(all_seg_sample_points)
+    else:
+        all_seg_sample_points = []
+        all_seg_sample_colors = []
+        all_seg_sample_labels = []
+        num_samples = 0
 
     # Get files
     target_hdf5_file = os.path.join(objects_dataset_path, target_object_filename)
@@ -88,7 +100,6 @@ def generate_object_segmentation_dataset(objects_dataset_path, target_object_fil
     num_samples_per_object = target_points.shape[0]
     NUM_POINTS_PER_SEG_SAMPLE = num_points_per_object * max_num_objects
 
-    num_samples = 0
     # Iterate through orientations
     for it in range(num_orientations):
         # Process each target sample
