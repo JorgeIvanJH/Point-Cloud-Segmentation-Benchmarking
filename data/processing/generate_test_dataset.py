@@ -120,7 +120,10 @@ def get_voxel(points_sample, colors_sample, labels_sample, max_points_in_box=204
     box_max = centroid + box_edge / 2
     
     # Expand box until we reach the desired number of points
+    max_box = 3 # 3 meters
+    tries = 0
     while num_points_in_box < max_points_in_box:
+        tries += 1
         points_in_box_mask = np.all((points_sample >= box_min) & (points_sample <= box_max), axis=1)
         points_in_box = points_sample[points_in_box_mask]
         colors_in_box = colors_sample[points_in_box_mask]  # Make sure this is assigned
@@ -131,6 +134,11 @@ def get_voxel(points_sample, colors_sample, labels_sample, max_points_in_box=204
             box_edge += increase_rate
             box_min = centroid - box_edge / 2
             box_max = centroid + box_edge / 2
+            if box_edge > max_box:
+                print(f"Warning: Box edge exceeded maximum size of {max_box} meters after {tries} tries. Stopping expansion.")
+                break
+        
+        
 
     # If fewer points, pad with zeros
     if num_points_in_box < max_points_in_box:
@@ -171,10 +179,11 @@ def generate_augmented_testset(input_full_hdf5_dir, num_orientations=10, num_dow
     all_seg_sample_points = []
     all_seg_sample_colors = []
     all_seg_sample_labels = []
-
+    count = 0
     for i in range(B):
         for j in range(num_orientations):
             for k in range(num_downsamplings):
+                count += 1
                 print(f"Processing point cloud {i+1}/{B}, orientation {j+1}/{num_orientations}, downsampling {k+1}/{num_downsamplings}")
                 # Random rotation
                 rotation_angle = np.random.uniform(0, 2 * np.pi)
@@ -210,15 +219,27 @@ def generate_augmented_testset(input_full_hdf5_dir, num_orientations=10, num_dow
                 all_seg_sample_points.append(downsampled_points)
                 all_seg_sample_colors.append(downsampled_colors)
                 all_seg_sample_labels.append(downsampled_labels)
-
+                
+                if count % 100 == 0:
+                    print(f"Processed {count} samples so far.")
+                    # Save the augmented point cloud
+                    output_filename = f"augmented_scenes_{B}_orientations{j+1}_downsamplings{k+1}_max_points_in_box{max_points_in_box}.h5"
+                    output_dir = os.path.join(os.path.dirname(input_full_hdf5_dir), output_filename)
+                    print(f"Saving augmented dataset to: {output_dir}")
+                    with h5py.File(output_dir, 'w') as f:
+                        f.create_dataset("seg_points", data=np.asarray(all_seg_sample_points))
+                        f.create_dataset("seg_colors", data=np.asarray(all_seg_sample_colors))
+                        f.create_dataset("seg_labels", data=np.asarray(all_seg_sample_labels))
+    print(f"Processed {count} samples so far.")
     # Save the augmented point cloud
-    output_filename = f"augmented_scenes_{B}_orientations{j}_downsamplings{k}.h5"
+    output_filename = f"augmented_scenes_{B}_orientations{j+1}_downsamplings{k+1}_max_points_in_box{max_points_in_box}.h5"
     output_dir = os.path.join(os.path.dirname(input_full_hdf5_dir), output_filename)
     print(f"Saving augmented dataset to: {output_dir}")
     with h5py.File(output_dir, 'w') as f:
         f.create_dataset("seg_points", data=np.asarray(all_seg_sample_points))
         f.create_dataset("seg_colors", data=np.asarray(all_seg_sample_colors))
         f.create_dataset("seg_labels", data=np.asarray(all_seg_sample_labels))
+
 
 if __name__ == '__main__':
 
@@ -232,9 +253,9 @@ if __name__ == '__main__':
     # generate_labelled_hdf5_testset(input_labelled_dir, output_full_hdf5_dir) # GENERATE HDF5 DATASET WITH 
     input_full_hdf5_dir = r"D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds\test\all_test_scenes.h5"
     # MODIFIABLE PARAMETERS
-    num_orientations=10
-    num_downsamplings = 10
-    range_downsampling=[0.1, 1.0]
-    max_points_in_box=20480
+    num_orientations=1
+    num_downsamplings = 1
+    range_downsampling=[0.3, 0.5]
+    max_points_in_box=100000
     increase_rate=0.001
     generate_augmented_testset(input_full_hdf5_dir, num_orientations, num_downsamplings, range_downsampling, max_points_in_box, increase_rate)
