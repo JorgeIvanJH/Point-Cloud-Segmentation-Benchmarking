@@ -165,7 +165,7 @@ def get_voxel(points_sample, colors_sample, labels_sample, max_points_in_box=204
 
     return points_in_box, colors_in_box, labels_in_box
 
-def generate_augmented_testset(input_full_hdf5_dir, num_orientations=10, num_downsamplings = 10, range_downsampling=[0.1, 1.0], max_points_in_box=20480, increase_rate=0.001):
+def generate_augmented_testset(input_full_hdf5_dir, num_orientations=10, num_downsamplings = 10, range_downsampling=[0.1, 1.0], max_points_in_box=20480, increase_rate=0.001, scenes_included=None):
     """
     Generates an augmented test set by applying random transformations to the point clouds.
     """
@@ -173,6 +173,11 @@ def generate_augmented_testset(input_full_hdf5_dir, num_orientations=10, num_dow
         point_clouds = f["seg_points"][:]
         color_clouds = f["seg_colors"][:]
         label_clouds = f["seg_labels"][:]
+    if scenes_included is not None:
+        point_clouds = point_clouds[scenes_included]
+        color_clouds = color_clouds[scenes_included]
+        label_clouds = label_clouds[scenes_included]
+
     B, num_points, _ = point_clouds.shape
 
 
@@ -232,7 +237,7 @@ def generate_augmented_testset(input_full_hdf5_dir, num_orientations=10, num_dow
                         f.create_dataset("seg_labels", data=np.asarray(all_seg_sample_labels))
     print(f"Processed {count} samples so far.")
     # Save the augmented point cloud
-    output_filename = f"augmented_scenes_{B}_orientations{j+1}_downsamplings{k+1}_max_points_in_box{max_points_in_box}.h5"
+    output_filename = f"augmentedscenes{scenes_included}_orientations{j+1}_downsamplings{k+1}_maxpointsinbox{max_points_in_box}.h5"
     output_dir = os.path.join(os.path.dirname(input_full_hdf5_dir), output_filename)
     print(f"Saving augmented dataset to: {output_dir}")
     with h5py.File(output_dir, 'w') as f:
@@ -253,9 +258,10 @@ if __name__ == '__main__':
     # generate_labelled_hdf5_testset(input_labelled_dir, output_full_hdf5_dir) # GENERATE HDF5 DATASET WITH 
     input_full_hdf5_dir = r"D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds\test\all_test_scenes.h5"
     # MODIFIABLE PARAMETERS
-    num_orientations=1
-    num_downsamplings = 1
+    num_orientations = 10
+    num_downsamplings = 10
     range_downsampling=[0.3, 0.5]
     max_points_in_box=100000
     increase_rate=0.001
-    generate_augmented_testset(input_full_hdf5_dir, num_orientations, num_downsamplings, range_downsampling, max_points_in_box, increase_rate)
+    scenes_included = [0, 2, 3, 4, 5, 6, 7, 8] # Change this to include specific scenes
+    generate_augmented_testset(input_full_hdf5_dir, num_orientations, num_downsamplings, range_downsampling, max_points_in_box, increase_rate, scenes_included)
