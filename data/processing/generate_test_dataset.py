@@ -228,7 +228,7 @@ def generate_augmented_testset(input_full_hdf5_dir, num_orientations=10, num_dow
                 if count % 100 == 0:
                     print(f"Processed {count} samples so far.")
                     # Save the augmented point cloud
-                    output_filename = f"augmented_scenes_{B}_orientations{j+1}_downsamplings{k+1}_max_points_in_box{max_points_in_box}.h5"
+                    output_filename = f"augmentedscenes{scenes_included}_orientations{j+1}_downsamplings{k+1}_maxpointsinbox{max_points_in_box}.h5"
                     output_dir = os.path.join(os.path.dirname(input_full_hdf5_dir), output_filename)
                     print(f"Saving augmented dataset to: {output_dir}")
                     with h5py.File(output_dir, 'w') as f:
@@ -263,5 +263,5 @@ if __name__ == '__main__':
     range_downsampling=[0.3, 0.5]
     max_points_in_box=100000
     increase_rate=0.001
-    scenes_included = [0, 2, 3, 4, 5, 6, 7, 8] # Change this to include specific scenes
+    scenes_included = [0, 2, 3, 4, 5, 6, 7, 8] # [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] Change this to include specific scenes
     generate_augmented_testset(input_full_hdf5_dir, num_orientations, num_downsamplings, range_downsampling, max_points_in_box, increase_rate, scenes_included)
