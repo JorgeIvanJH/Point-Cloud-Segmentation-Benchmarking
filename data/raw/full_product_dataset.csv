@@ -1,3 +1,5 @@
+
+# TODO: Remove useless columns from here
 Category,EAN_code,EAN_product_name,rec_grasp_force,weight,object_name
 1 COFFEE,8711000519325,Smooth,40,365,coffee_kenco_100gm
 "generate_hdf5_dataset_with_padding( source_dir + object_name +""/"", save_to_dir + object_name + ""_"" + str(NUM_SAMPLES) + ""_"" + str(NUM_POINTS) + ""_"" + EAN_code, NUM_POINTS )",7613038575650,Nescafe original 3 in 1,07,127,coffee_nescafe_3in1_original_6cups

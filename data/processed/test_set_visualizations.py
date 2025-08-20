@@ -45,7 +45,33 @@ def plot_pc_labels(points, labels):
     pcd.colors = o3d.utility.Vector3dVector(label_colors)
     o3d.visualization.draw_geometries([pcd], window_name="Labelled Point Cloud")
 
-def plot_pc_rgb_and_labels(points, colors, labels, offset=1.0):
+def create_grid(x_range, y_range, step=1.0, z_level=0.0, color=[0.7, 0.7, 0.7]):
+    """
+    Create a grid of lines in the XY plane at a fixed z_level.
+    """
+    lines = []
+    points = []
+
+    # Vertical lines (constant x)
+    for x in np.arange(x_range[0], x_range[1] + step, step):
+        points.append([x, y_range[0], z_level])
+        points.append([x, y_range[1], z_level])
+        lines.append([len(points) - 2, len(points) - 1])
+
+    # Horizontal lines (constant y)
+    for y in np.arange(y_range[0], y_range[1] + step, step):
+        points.append([x_range[0], y, z_level])
+        points.append([x_range[1], y, z_level])
+        lines.append([len(points) - 2, len(points) - 1])
+
+    line_set = o3d.geometry.LineSet()
+    line_set.points = o3d.utility.Vector3dVector(points)
+    line_set.lines = o3d.utility.Vector2iVector(lines)
+    line_set.colors = o3d.utility.Vector3dVector([color] * len(lines))
+
+    return line_set
+
+def plot_pc_rgb_and_labels(points, colors, labels, offset=1.0, grid_step=0.5):
     # Create original RGB point cloud
     pcd_rgb = o3d.geometry.PointCloud()
     pcd_rgb.points = o3d.utility.Vector3dVector(points)
@@ -61,10 +87,22 @@ def plot_pc_rgb_and_labels(points, colors, labels, offset=1.0):
     pcd_labels.points = o3d.utility.Vector3dVector(translated_points)
     pcd_labels.colors = o3d.utility.Vector3dVector(label_colors)
 
-    # Combine and show
+    # Create grid around the two point clouds
+    full_points = np.vstack([points, translated_points])
+    min_bound = full_points.min(axis=0)
+    max_bound = full_points.max(axis=0)
+
+    # Add margin to bounds
+    margin = 0.5
+    x_range = (min_bound[0] - margin, max_bound[0] + margin)
+    y_range = (min_bound[1] - margin, max_bound[1] + margin)
+
+    grid = create_grid(x_range, y_range, step=grid_step, z_level=min_bound[2] - 0.01)
+
+    # Visualize all
     o3d.visualization.draw_geometries(
-        [pcd_rgb, pcd_labels],
-        window_name="Left: RGB | Right: Segmentation Labels"
+        [pcd_rgb, pcd_labels, grid],
+        window_name="Left: RGB | Right: Segmentation Labels with Grid"
     )
 
 for N in range(0, 10):

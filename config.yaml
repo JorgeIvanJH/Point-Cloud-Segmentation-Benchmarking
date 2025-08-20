@@ -28,9 +28,9 @@ MODEL:
   BATCH_NORM: true
 DATA: # Parameters for data processing
   WITH_REAL_BACKGROUND: False # CHANGE TO TAKE BACKGROUND FROM REAL SCENES IN THE TEST SET
-  NUM_POINTS_PER_OBJECT: 10240 # number of points per object
+  NUM_POINTS_PER_OBJECT: 2048 # number of points per object
   MAX_NUM_OBJECTS: 10 # max number of objects in per point cloud sample (1 target and NUM_OBJECTS - 1 alien objects)
-  MIN_NUM_OBJECTS: 9 # min number of objects in per point cloud sample
+  MIN_NUM_OBJECTS: 1 # min number of objects in per point cloud sample
   RAW_DATASET_DIR: D:\Datasets\MinimarketPointCloud\MiniMarket_raw  # Path to the main raw (unprocessed) dataset folder. Each subfolder represents a different object and contains its corresponding .pcd point cloud files.
   POINTCLOUD_SAVE_DIR: D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds # Path to save processed point clouds in .h5 format and with the number of points specified in NUM_POINTS_PER_OBJECT
   TARGET_OBJECT_NAME: ketchup_heinz_400ml # Name of the object to segment out of the raw dataset. The script will assign point of TARGET_OBJECT_NAME to make the target class mask and all other points to the alien class mask.
@@ -38,4 +38,4 @@ DATA: # Parameters for data processing
   NUM_PRODUCTS_IN_DATASET: 82 # NOT LIKELY TO CHANGE! Number of products in the dataset. The script will generate point clouds for all products in the dataset.
   RAW_TEST_SET_DIR: D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds\test\all_test_scenes.h5
   NUM_SCENES: 1200
-  CHECKPOINT_DIR: D:\Datasets\MinimarketPointCloud\MiniMarket_point_clouds\10240\segmentation_dataset\ketchup_heinz_400ml_segmentation_date_20250717_time_135022_numPoints_10240_minObjects_9_maxObjects_10_numrientations_10.h5
+  CHECKPOINT_DIR: # PUT value ONLY IF YOU WANT TO CONTINUE TRAINING FROM A CHECKPOINT
