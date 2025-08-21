@@ -46,6 +46,8 @@ python generate_test_dataset.py
 
 A walkthrough of the creation of the grund truth (the "all_test_scenes.h5" file) of the test scenes is recorded in the following video: https://www.youtube.com/watch?v=1oW0zgDS-q8&ab_channel=JorgeIv%C3%A1nJaramilloHerrera . This video relates to the same script, where lines previous to the generation of the dataset deal with the cleaning of null values, centering, and matching of the labels in json format generated and downloaded from https://app.supervisely.com/ 
 
+You can find the generated datasets in HDF5 format in: https://uoe-my.sharepoint.com/:f:/g/personal/s2739025_ed_ac_uk/EoUDFp6VWRhMs-YVGy8GeT4BLGv9cqTyJ_ShE6nAnh9Elg?e=a20Xx4
+
 ### Visualize Created Datasets
 
 One by one, the scenes in the generated HDF5 are plotted and shown, both with its original colours, and the masks, in different plots, when running:
