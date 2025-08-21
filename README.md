@@ -30,6 +30,8 @@ To execute this code just run:
 python generate_trainvalid_dataset.py
 ```
 
+note: The original MiniMarket dataset can be downloaded from: https://www.kaggle.com/datasets/83896356f3cefb84a1256545154992a94d8ed5495c49b901bff8471c30daaacc 
+
 ### Generate Real-Life Scenes Datasets
 
 Similar to artificial scenes, the parameter configrations are taken from the same .yaml file, and is executed from "Point-Cloud-Segmentation-Benchmarking\data\processing\generate_test_dataset.py". The HDF5 file containing the manually set labels (named "all_test_scenes.h5") is specified in RAW_TEST_SET_DIR, and the save directory in POINTCLOUD_SAVE_DIR. This file has 10 scenes only, from which those involved in the creation of the dataaset through augmentation techniques are specified in the scenes_included list (e.g. scenes_included = [1] was used to create the test set, involving the scene 1 only).
