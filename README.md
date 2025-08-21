@@ -55,10 +55,14 @@ python Point-Cloud-Segmentation-Benchmarking\utils.py
 With the specified file in the directory in DATASET_DIR. Along with the plot, asssert validation on the matrix sizes of each pointcloud are done as well.
 
 
-## Model Training
+## Model Training (not used in the report)
 
-The first approach to train the segmentation models was implemented in this same repository, however it was later switched to that based on TochPoints3D. However, here we present how it worked:
+The first approach to train the segmentation models was implemented in this same repository, however it was later switched to that based on TochPoints3D. However, here we still present how it worked:
 
-The script "Point-Cloud-Segmentation-Benchmarking\train.py" reads the config.yaml file, pveriding any additional argparse parameters specified for the TRAIN and MODEL sections in it, such as the number of epichs, learning rate, batch size, etc.
+The script "Point-Cloud-Segmentation-Benchmarking\train.py" reads the config.yaml file, overiding any additional argparse parameters specified for the TRAIN and MODEL sections in it, such as the number of epochs, learning rate, batch size, etc.
 
-The models architectured for PointNet and PointNet++ are stored in "Point-Cloud-Segmentation-Benchmarking\models\architectures", and the performance metrics, and final trained model were stored in "Point-Cloud-Segmentation-Benchmarking\experiments", in a folder named accordingly to the model being trained.
+The models architectures for PointNet and PointNet++ are stored in "Point-Cloud-Segmentation-Benchmarking\models\architectures", and the performance metrics, and final trained model were stored in "Point-Cloud-Segmentation-Benchmarking\experiments", in a folder named accordingly to the model being trained, when running
+
+```bash
+python train.py
+```
